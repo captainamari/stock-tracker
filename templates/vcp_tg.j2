@@ -1,0 +1,51 @@
+<b>🎯 VCP Scanner</b>  {{ timestamp }}
+Scanned {{ total_analyzed }} Stage 2 stocks
+🎯 {{ vcp_stocks|length }} VCP Signals · 🟡 {{ near_vcp|length }} Near-VCP
+
+{% if changes %}
+<b>🔔 VCP Changes</b>
+{% for c in changes %}
+{% if c.type == 'new_vcp' %}
+🟢 <b>{{ c.ticker }}</b> → VCP Signal (Score {{ c.vcp_score }})
+{% elif c.type == 'lost_vcp' %}
+⚪ <b>{{ c.ticker }}</b> lost VCP
+{% endif %}
+{% endfor %}
+
+{% endif %}
+{% if vcp_stocks %}
+<b>🎯 VCP Signals — Breakout Candidates</b>
+
+{% for s in vcp_stocks %}
+{% set m_parts = [] %}
+{% if s.chg_5d is not none %}{% if m_parts.append("5D " ~ s.chg_5d|fmt_pct) %}{% endif %}{% endif %}
+{% if s.chg_20d is not none %}{% if m_parts.append("20D " ~ s.chg_20d|fmt_pct) %}{% endif %}{% endif %}
+{% set m_str = m_parts|join(" · ") %}
+{{ loop.index }}. <b>{{ s.ticker }}</b> ${{ s.price }} {{ s.vcp_score|score_emoji_vcp }} {{ s.vcp_score }}pts ({{ s.passed }}/{{ s.total }})
+   <i>{{ s.sector }}</i> · Stage2 D{{ s.days_in_stage2 }}
+   BBW P{{ s.metrics.get('bbw_percentile', '-') }}% · Vol {{ s.metrics.get('vol_ratio', '-') }}x{% if m_str %} · {{ m_str }}{% endif %}
+
+   Support: MA10 ${{ s.sma10 }} · MA50 ${{ s.sma50 }}
+
+{% endfor %}
+{% else %}
+<b>⚠️ No VCP signals</b>
+
+{% endif %}
+{% if near_vcp %}
+<b>🟡 Near-VCP</b> ({{ near_vcp|length }})
+
+{% for s in near_vcp %}
+{% set failed_keys = [] %}
+{% for k, v in s.conditions.items() if v is not none and not v %}
+{% if failed_keys.append(k) %}{% endif %}
+{% endfor %}
+{% set filled = "▓" * s.passed ~ "░" * (s.total - s.passed) %}
+<b>{{ s.ticker }}</b> ${{ s.price }} {{ filled }} {{ s.passed }}/{{ s.total }}
+{% for fk in failed_keys[:2] %}
+{% set diag = s.condition_details.get(fk, fk) if s.condition_details else fk %}
+  └ ❌ {{ diag|tg_escape }}
+{% endfor %}
+
+{% endfor %}
+{% endif %}

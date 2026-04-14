@@ -1,0 +1,52 @@
+# Stage 2 监控报告
+
+**时间**: {{ timestamp }}
+{% if spy_return_6m is not none %}
+**SPY 6个月回报**: {{ spy_return_6m|fmt_pct }}
+{% endif %}
+
+{% if changes %}
+## 状态变化
+
+{% for c in changes %}
+{% if c.type == 'entry' %}
+- 进入 Stage 2: **{{ c.ticker }}**
+{% else %}
+- 离开 Stage 2: **{{ c.ticker }}**
+{% endif %}
+{% endfor %}
+
+{% endif %}
+{% if stage2_stocks %}
+## Stage 2 股票
+
+| # | 代码 | 名称 | 板块 | 价格 | 趋势强度 | 距高点 | 高于MA200 | 6M回报 | 5D | 20D |
+|---|------|------|------|------|----------|--------|----------|--------|-----|-----|
+{% for s in stage2_stocks %}
+{% set ret = s.stock_return_6m|fmt_pct if s.stock_return_6m is not none else "N/A" %}
+{% set chg5 = s.chg_5d|fmt_pct if s.chg_5d is not none else "N/A" %}
+{% set chg20 = s.chg_20d|fmt_pct if s.chg_20d is not none else "N/A" %}
+{% set vol = " " ~ s.vol_signal if s.vol_signal else "" %}
+| {{ loop.index }} | **{{ s.ticker }}** | {{ s.name }} | {{ s.sector }} | ${{ s.price }} | {{ s.trend_power|default(0) }}/100{{ vol }} | {{ s.pct_from_high|fmt_pct }} | +{{ s.pct_above_sma200|fmt_val(".1f") }}% | {{ ret }} | {{ chg5 }} | {{ chg20 }} |
+{% endfor %}
+
+{% else %}
+## 暂无 Stage 2 股票
+
+{% endif %}
+{% if near_stocks %}
+## 接近 Stage 2（关注列表）
+
+{% for s in near_stocks %}
+{% set failed_keys = [] %}
+{% for k, v in s.conditions.items() if not v %}
+{% if failed_keys.append(k) %}{% endif %}
+{% endfor %}
+### {{ s.ticker }} ({{ s.name }}) — {{ s.passed }}/{{ s.total }} · ${{ s.price }}
+{% for fk in failed_keys %}
+{% set diag = s.condition_details.get(fk, fk) if s.condition_details else fk %}
+- ❌ {{ fk }}: {{ diag }}
+{% endfor %}
+
+{% endfor %}
+{% endif %}

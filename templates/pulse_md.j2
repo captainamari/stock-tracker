@@ -1,0 +1,38 @@
+# {{ regime_emoji }} Market Pulse
+
+**时间**: {{ timestamp }}
+**综合评分**: {{ composite }}/100
+**市场状态**: {{ regime_label }}
+**操作建议**: {{ hint }}
+
+{% if regime_changed %}
+## 状态变化
+
+{{ prev_regime|upper }} → {{ regime_label }}
+
+{% endif %}
+## 指数概览
+
+| 指数 | 价格 | 评分 | vs MA50 | vs MA200 | RSI | 5D | 20D |
+|------|------|------|---------|----------|-----|-----|-----|
+{% for idx in indices if idx is not none %}
+{% set ma50 = idx.pct_vs_sma50|fmt_pct if idx.pct_vs_sma50 is not none else "N/A" %}
+{% set ma200 = idx.pct_vs_sma200|fmt_pct if idx.pct_vs_sma200 is not none else "N/A" %}
+{% set rsi_str = "%.0f"|format(idx.rsi) if idx.rsi else "N/A" %}
+{% set c5d = idx.chg_5d|fmt_pct if idx.chg_5d is not none else "N/A" %}
+{% set c20d = idx.chg_20d|fmt_pct if idx.chg_20d is not none else "N/A" %}
+| **{{ idx.ticker }}** | ${{ idx.price }} | {{ idx.trend_score }}/100 | {{ ma50 }} | {{ ma200 }} | {{ rsi_str }} | {{ c5d }} | {{ c20d }} |
+{% endfor %}
+
+{% if vix %}
+## VIX
+
+VIX: {{ vix.value }} ({{ vix.zone_label }}) · Score: {{ vix.score }}/100
+
+{% endif %}
+{% if breadth %}
+## 宽度
+
+>MA50: {{ breadth.above_sma50_pct|fmt_val(".0f") }}% · >MA200: {{ breadth.above_sma200_pct|fmt_val(".0f") }}% · Stage2: {{ breadth.stage2_pct|fmt_val(".0f") }}% · Score: {{ breadth.breadth_score }}/100
+
+{% endif %}

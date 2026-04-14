@@ -1,0 +1,33 @@
+# 抄底信号扫描报告
+
+**时间**: {{ timestamp }}
+**分析数量**: {{ total_analyzed }}
+
+{% if changes %}
+## 状态变化
+
+{% for c in changes %}
+{% if c.type == 'new_signal' %}
+- 新增抄底信号: **{{ c.ticker }}** (得分 {{ c.bf_score }}/100)
+{% elif c.type == 'lost_signal' %}
+- 失去抄底信号: **{{ c.ticker }}**
+{% endif %}
+{% endfor %}
+
+{% endif %}
+{% if signal_stocks %}
+## 抄底信号股票
+
+| # | 代码 | 名称 | 价格 | 得分 | 条件 | RSI | 量比 | 距高点 |
+|---|------|------|------|------|------|-----|------|--------|
+{% for s in signal_stocks %}
+{% set rsi_str = s.metrics.get('rsi', 'N/A') %}
+{% set vol_str = s.metrics.get('vol_ratio', 'N/A') %}
+{% set hi = s.metrics.pct_from_52w_high|fmt_pct %}
+| {{ loop.index }} | **{{ s.ticker }}** | {{ s.name }} | ${{ s.price }} | {{ s.bf_score }}/100 | {{ s.passed }}/{{ s.total }} | {{ rsi_str }} | {{ vol_str }} | {{ hi }} |
+{% endfor %}
+
+{% else %}
+## 暂无抄底信号
+
+{% endif %}

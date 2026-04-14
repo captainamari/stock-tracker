@@ -1,0 +1,83 @@
+<b>📊 Stage 2 Monitor</b>  {{ timestamp }}
+Analyzed {{ total_analyzed }}
+{%- if spy_return_6m is not none %} · SPY 6M {{ "📈" if spy_return_6m > 0 else "📉" }} {{ spy_return_6m|fmt_pct }}{% endif %}
+
+✅ {{ stage2_stocks|length }} Stage 2 · 🟡 {{ near_stocks|length }} Watchlist
+
+{% if changes %}
+<b>🔔 Status Changes</b>
+{% for c in changes if c.type == 'entry' %}
+{% set ret_str = " · 6M " ~ c.stock_return_6m|fmt_pct if c.stock_return_6m is not none else "" %}
+
+🟢 <b>{{ c.ticker }}</b> → Stage 2
+   ${{ c.price }} · High {{ c.pct_from_high|fmt_pct }}{{ ret_str }}
+   Trend {{ c.trend_power|default(0)|score_emoji_tp }} {{ c.trend_power|default(0) }}/100
+{% endfor %}
+{% for c in changes if c.type == 'exit' %}
+{% set days_str = " · " ~ c.days_held ~ "d held" if c.days_held else "" %}
+
+🔴 <b>{{ c.ticker }}</b> ✗ Stage 2{{ days_str }}
+{% if c.failed_conditions %}
+{% set reasons = [] %}
+{% for fk in c.failed_conditions[:3] %}
+{% set diag = c.condition_details.get(fk, fk) if c.condition_details else fk %}
+{% if reasons.append(diag) %}{% endif %}
+{% endfor %}
+   Why: {{ reasons|join('; ') }}
+{% endif %}
+{% endfor %}
+
+{% endif %}
+{% if stage2_stocks %}
+<b>✅ Stage 2 — Ranked by Trend Power</b>
+
+{% for s in stage2_stocks %}
+{% set tp = s.trend_power|default(0) %}
+{% set m_parts = [] %}
+{% if s.chg_5d is not none %}{% if m_parts.append("5D " ~ s.chg_5d|fmt_pct) %}{% endif %}{% endif %}
+{% if s.chg_20d is not none %}{% if m_parts.append("20D " ~ s.chg_20d|fmt_pct) %}{% endif %}{% endif %}
+{% set m_str = m_parts|join(" · ") %}
+{% set ret_str = "" %}
+{% if s.stock_return_6m is not none %}
+{% set excess = "" %}
+{% if spy_return_6m is not none and s.stock_return_6m > spy_return_6m %}
+{% set diff = s.stock_return_6m - spy_return_6m %}
+{% set excess = " (α +" ~ "%.1f"|format(diff) ~ "%)" %}
+{% endif %}
+{% set ret_str = "6M " ~ s.stock_return_6m|fmt_pct ~ excess %}
+{% endif %}
+{% set vol = " " ~ s.vol_signal if s.vol_signal else "" %}
+{% set days_in = "" %}
+{% if s.days_in_stage2 is defined and s.days_in_stage2 > 0 %}{% set days_in = " · D" ~ s.days_in_stage2 %}{% endif %}
+{{ loop.index }}. <b>{{ s.ticker }}</b> ${{ s.price }} {{ tp|score_emoji_tp }} {{ tp }}pts{{ vol }}{{ days_in }}
+   <i>{{ s.sector }}</i> · High {{ s.pct_from_high|fmt_pct }}{% if m_str %} · {{ m_str }}{% endif %}
+
+{% if ret_str %}
+   {{ ret_str }}
+{% endif %}
+   Support: MA50 ${{ s.support_sma50 }} · MA150 ${{ s.support_sma150 }}
+
+{% endfor %}
+{% else %}
+<b>⚠️ No Stage 2 stocks</b>
+
+{% endif %}
+{% if near_stocks %}
+<b>🟡 Watchlist</b> ({{ near_stocks|length }} ≥5/8)
+
+{% for s in near_stocks %}
+{% set failed_keys = [] %}
+{% for k, v in s.conditions.items() if v is not none and not v %}
+{% if failed_keys.append(k) %}{% endif %}
+{% endfor %}
+{% set filled = "▓" * s.passed ~ "░" * (s.total - s.passed) %}
+{% set ret_str = " · 6M " ~ s.stock_return_6m|fmt_pct if s.stock_return_6m is not none else "" %}
+{% set chg_str = " · 5D " ~ s.chg_5d|fmt_pct if s.chg_5d is not none else "" %}
+<b>{{ s.ticker }}</b> ${{ s.price }} {{ filled }} {{ s.passed }}/{{ s.total }}{{ ret_str }}{{ chg_str }}
+{% for fk in failed_keys %}
+{% set diag = s.condition_details.get(fk, fk) if s.condition_details else fk %}
+  └ ❌ {{ diag }}
+{% endfor %}
+
+{% endfor %}
+{% endif %}

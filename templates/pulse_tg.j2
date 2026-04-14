@@ -1,0 +1,49 @@
+<b>{{ regime_emoji }} Market Pulse</b>  {{ timestamp }}
+Score: <b>{{ composite }}/100</b> · {{ regime_label }}
+
+{% if regime_changed %}
+<b>🔔 Regime Change</b>
+{{ prev_regime_emoji }} {{ prev_regime|upper }} → {{ regime_emoji }} {{ regime|upper }}
+
+{% endif %}
+<b>📊 Index Overview</b>
+
+{% for idx in indices if idx is not none %}
+{% set ma_cross = "🔀" if idx.ma_cross == 'golden' else "✖️" if idx.ma_cross == 'death' else "" %}
+<b>{{ idx.ticker }}</b> ${{ idx.price }} {{ idx.trend_score|score_bar(5) }} {{ idx.trend_score }}pts {{ ma_cross }}
+{% set parts = [] %}
+{% if idx.pct_vs_sma50 is not none %}{% if parts.append("MA50 " ~ idx.pct_vs_sma50|fmt_pct) %}{% endif %}{% endif %}
+{% if idx.pct_vs_sma200 is not none %}{% if parts.append("MA200 " ~ idx.pct_vs_sma200|fmt_pct) %}{% endif %}{% endif %}
+{% if idx.rsi %}{% if parts.append("RSI " ~ "%.0f"|format(idx.rsi)) %}{% endif %}{% endif %}
+   {{ parts|join(' · ') }}
+{% set m_parts = [] %}
+{% if idx.chg_1d is not none %}{% if m_parts.append("1D " ~ idx.chg_1d|fmt_pct) %}{% endif %}{% endif %}
+{% if idx.chg_5d is not none %}{% if m_parts.append("5D " ~ idx.chg_5d|fmt_pct) %}{% endif %}{% endif %}
+{% if idx.chg_20d is not none %}{% if m_parts.append("20D " ~ idx.chg_20d|fmt_pct) %}{% endif %}{% endif %}
+{% if idx.streak %}{% if m_parts.append("Streak " ~ idx.streak) %}{% endif %}{% endif %}
+   {{ m_parts|join(' · ') }}
+
+{% endfor %}
+{% if vix %}
+<b>{{ vix.zone_emoji }} VIX</b> {{ vix.value }}{% if vix.chg_1d is not none %} ({{ vix.chg_1d|fmt_pct }}){% endif %} — {{ vix.zone_label }}
+
+{% endif %}
+{% if breadth %}
+<b>📐 Breadth</b> ({{ breadth.analyzed }} stocks)
+   &gt;MA50: {{ breadth.above_sma50_pct|fmt_val(".0f") }}% · &gt;MA200: {{ breadth.above_sma200_pct|fmt_val(".0f") }}% · Stage2: {{ breadth.stage2_pct|fmt_val(".0f") }}%
+   Score: {{ breadth.breadth_score }}/100
+
+{% if hot_sectors %}
+<b>🔥 Hot Sectors</b>
+{% for s in hot_sectors[:5] %}
+   {{ s.sector }}: {{ s.stage2 }}/{{ s.total }} Stage 2
+{% endfor %}
+
+{% endif %}
+{% endif %}
+<b>📊 Components</b>
+{% for k, v in scores.items() %}
+   {{ k }}: {{ v|score_bar(5) }} {{ v }}
+{% endfor %}
+
+<b>💡 {{ hint|tg_escape }}</b>

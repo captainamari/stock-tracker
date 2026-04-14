@@ -1,0 +1,259 @@
+{
+  "monitored": [
+    {
+      "symbol": "NVDA",
+      "name": "Nvidia",
+      "sector": "Semiconductors",
+      "enabled": true
+    },
+    {
+      "symbol": "TSLA",
+      "name": "Tesla",
+      "sector": "Automotive",
+      "enabled": true
+    },
+    {
+      "symbol": "TEM",
+      "name": "Tempus AI",
+      "sector": "Healthcare Tech",
+      "enabled": true
+    },
+    {
+      "symbol": "ZETA",
+      "name": "Zeta Global",
+      "sector": "Marketing Tech",
+      "enabled": true
+    },
+    {
+      "symbol": "PLTR",
+      "name": "Palantir",
+      "sector": "Software",
+      "enabled": true
+    },
+    {
+      "symbol": "GOOG",
+      "name": "Alphabet",
+      "sector": "Internet",
+      "enabled": true
+    },
+    {
+      "symbol": "MSFT",
+      "name": "Microsoft",
+      "sector": "Software",
+      "enabled": true
+    },
+    {
+      "symbol": "RBLX",
+      "name": "Roblox",
+      "sector": "Gaming",
+      "enabled": true
+    },
+    {
+      "symbol": "NFLX",
+      "name": "Netflix",
+      "sector": "Streaming",
+      "enabled": true
+    },
+    {
+      "symbol": "AVAV",
+      "name": "AeroVironment",
+      "sector": "Defense",
+      "enabled": true
+    },
+    {
+      "symbol": "RCAT",
+      "name": "Red Cat Holdings",
+      "sector": "Defense Drones",
+      "enabled": true
+    },
+    {
+      "symbol": "KTOS",
+      "name": "Kratos Defense",
+      "sector": "Defense",
+      "enabled": true
+    },
+    {
+      "symbol": "AAPL",
+      "name": "Apple",
+      "sector": "Technology",
+      "enabled": true
+    },
+    {
+      "symbol": "AMZN",
+      "name": "Amazon",
+      "sector": "E-Commerce",
+      "enabled": true
+    },
+    {
+      "symbol": "CVX",
+      "name": "Chevron",
+      "sector": "Energy",
+      "enabled": true
+    },
+    {
+      "symbol": "EWY",
+      "name": "iShares MSCI South Korea ETF",
+      "sector": "ETF",
+      "enabled": true
+    },
+    {
+      "symbol": "GLUE",
+      "name": "Monte Rosa Therapeutics",
+      "sector": "Biotech",
+      "enabled": true
+    },
+    {
+      "symbol": "INTC",
+      "name": "Intel",
+      "sector": "Semiconductors",
+      "enabled": true
+    },
+    {
+      "symbol": "ISRG",
+      "name": "Intuitive Surgical",
+      "sector": "Medical Devices",
+      "enabled": true
+    },
+    {
+      "symbol": "LMND",
+      "name": "Lemonade",
+      "sector": "Insurtech",
+      "enabled": true
+    },
+    {
+      "symbol": "META",
+      "name": "Meta Platforms",
+      "sector": "Social Media",
+      "enabled": true
+    },
+    {
+      "symbol": "MU",
+      "name": "Micron Technology",
+      "sector": "Semiconductors",
+      "enabled": true
+    },
+    {
+      "symbol": "NBIS",
+      "name": "Nebius Group",
+      "sector": "AI Infrastructure",
+      "enabled": true
+    },
+    {
+      "symbol": "ORCL",
+      "name": "Oracle",
+      "sector": "Software",
+      "enabled": true
+    },
+    {
+      "symbol": "SLB",
+      "name": "Schlumberger",
+      "sector": "Energy Services",
+      "enabled": true
+    },
+    {
+      "symbol": "MRVL",
+      "name": "Marvell Technology",
+      "sector": "Semiconductors",
+      "enabled": true
+    },
+    {
+      "symbol": "CRDO",
+      "name": "CREDO Technology",
+      "sector": "Semiconductors",
+      "enabled": true
+    },
+    {
+      "symbol": "CLS",
+      "name": "Celestica",
+      "sector": "Electronics Manufacturing",
+      "enabled": true
+    },
+    {
+      "symbol": "LLY",
+      "name": "Eli Lilly",
+      "sector": "Pharmaceuticals",
+      "enabled": true
+    },
+    {
+      "symbol": "TEVA",
+      "name": "Teva Pharmaceutical",
+      "sector": "Pharmaceuticals",
+      "enabled": true
+    },
+    {
+      "symbol": "USO",
+      "name": "United States Oil Fund",
+      "sector": "Commodity ETF",
+      "enabled": true
+    },
+    {
+      "symbol": "RDW",
+      "name": "Redwire",
+      "sector": "Space",
+      "enabled": true
+    },
+    {
+      "symbol": "PL",
+      "name": "Planet Labs",
+      "sector": "Space",
+      "enabled": true
+    },
+    {
+      "symbol": "BKSY",
+      "name": "BlackSky Technology",
+      "sector": "Space",
+      "enabled": true
+    },
+    {
+      "symbol": "SPIR",
+      "name": "Spire Global",
+      "sector": "Space",
+      "enabled": true
+    },
+    {
+      "symbol": "AAOI",
+      "name": "Applied Optoelectronics",
+      "sector": "Fiber Optics",
+      "enabled": true
+    }
+  ],
+  "yfinance_only": [
+    {
+      "symbol": "VIX",
+      "yf_ticker": "^VIX",
+      "name": "CBOE Volatility Index",
+      "sector": "Market Index",
+      "enabled": true
+    },
+    {
+      "symbol": "SPY",
+      "yf_ticker": "SPY",
+      "name": "S&P 500 ETF",
+      "sector": "Market Index",
+      "enabled": true
+    },
+    {
+      "symbol": "QQQ",
+      "yf_ticker": "QQQ",
+      "name": "Nasdaq 100 ETF",
+      "sector": "Market Index",
+      "enabled": true
+    },
+    {
+      "symbol": "IWM",
+      "yf_ticker": "IWM",
+      "name": "Russell 2000 ETF",
+      "sector": "Market Index",
+      "enabled": true
+    }
+  ],
+  "benchmark": "SPY",
+  "update_frequency": "daily",
+  "market_hours": {
+    "open": "09:30",
+    "close": "16:00",
+    "timezone": "America/New_York"
+  },
+  "data_retention_days": 365,
+  "cache_ttl_hours": 24
+}

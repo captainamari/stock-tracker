@@ -1,0 +1,32 @@
+# VCP 扫描报告
+
+**时间**: {{ timestamp }}
+**分析数量**: {{ total_analyzed }}
+
+{% if changes %}
+## 状态变化
+
+{% for c in changes %}
+{% if c.type == 'new_vcp' %}
+- 新增 VCP: **{{ c.ticker }}** (得分 {{ c.vcp_score }}/100)
+{% elif c.type == 'lost_vcp' %}
+- 失去 VCP: **{{ c.ticker }}**
+{% endif %}
+{% endfor %}
+
+{% endif %}
+{% if vcp_stocks %}
+## VCP 信号股票
+
+| # | 代码 | 名称 | 价格 | VCP得分 | 条件 | BBW分位 | 量比 |
+|---|------|------|------|---------|------|---------|------|
+{% for s in vcp_stocks %}
+{% set bbw_p = s.metrics.get('bbw_percentile', 'N/A') ~ "%" %}
+{% set vol_r = s.metrics.get('vol_ratio', 'N/A') %}
+| {{ loop.index }} | **{{ s.ticker }}** | {{ s.name }} | ${{ s.price }} | {{ s.vcp_score }}/100 | {{ s.passed }}/{{ s.total }} | {{ bbw_p }} | {{ vol_r }} |
+{% endfor %}
+
+{% else %}
+## 暂无 VCP 信号
+
+{% endif %}
