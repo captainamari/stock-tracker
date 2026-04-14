@@ -5,8 +5,8 @@
 ## 总览
 
 ```
-save_prices.py            → 数据采集层 Stooq（个股）
-save_prices_yfinance.py   → 数据采集层 yfinance（VIX / SPY / QQQ / IWM）
+save_prices.py            → 数据采集层 ⚠️ 已弃用（Stooq 数据源不可用）
+save_prices_yfinance.py   → 数据采集层 yfinance
         ↓
     SQLite DB (stock_tracker.db)
         ↓
@@ -40,17 +40,6 @@ bottom_fisher.py          → 策略3: 抄底左侧信号（独立运行）
 | Phase 2 | 改造各策略脚本，计算结果存入 DB + 保留现有文件输出（双写过渡） | ✅ 已完成 |
 | Phase 3 | 抽取 Jinja2 报告模板，报告从 DB 数据渲染 | ✅ 已完成 |
 | Phase 4 | 开发 Web 应用（Dashboard + Watchlist + Ticker Detail） | 🚧 待开发 |
-
-### 相比旧版 (workspace/stocks) 的核心升级
-
-| 旧版 | 新版 (stock-tracker) |
-|------|---------------------|
-| CSV 文件存储价格数据 | SQLite 数据库 (`stock_tracker.db`) |
-| JSON 文件存储策略状态 (`state/*.json`) | DB `strategy_states` 表 |
-| 策略结果无持久化 | DB `strategy_results` 表 + `signal_changes` 表 |
-| 报告生成逻辑硬编码在各脚本中 | Jinja2 模板 (`templates/*.j2`) + 共享 `lib/report.py` |
-| 技术指标分散在各脚本中 | 统一技术指标库 `lib/indicators.py` |
-| 每次运行需要网络请求或文件读取 | DB 统一读取，`get_prices_as_dataframe()` 兼容旧接口 |
 
 ---
 
@@ -146,20 +135,20 @@ stage2_monitor.py  ──→  strategy_results/states
 
 ## 数据采集层
 
-### `save_prices.py` — Stooq 数据源 (v3.0)
+### `save_prices.py` — Stooq 数据源
 
-主力数据采集脚本，从 stooq.com 拉取 OHLCV 日线数据，覆盖 `tickers.json` 中的 36 只个股 + SPY 基准。
+主力数据采集脚本，从 stooq.com 拉取 OHLCV 日线数据，覆盖 `tickers.json` 中的 个股 + SPY 基准。
 
-### `save_prices_yfinance.py` — yfinance 数据源 (v2.0)
+### `save_prices_yfinance.py` — yfinance 数据源
 
 补充数据采集脚本，从 Yahoo Finance 拉取 Stooq 不覆盖的 ticker，读取 `tickers.json` 的 `yfinance_only` 配置区。
 
 | 对比项 | Stooq 版 | yfinance 版 |
 |--------|---------|-------------|
-| **覆盖** | 36 只个股 + SPY | VIX / SPY / QQQ / IWM |
+| **覆盖** | 个股 + SPY | VIX / SPY / QQQ / IWM |
 | **配置区** | `monitored[]` + `benchmark` | `yfinance_only[]` |
 | **请求间隔** | 1 秒 | 2~3.5 秒（更保守） |
-| **风险** | 无限流问题 | 有限流风险，仅拉 4 只 |
+| **风险** | 无限流问题 | 有限流风险 |
 | **存储** | SQLite DB + CSV 备份 | SQLite DB + CSV 备份 |
 
 > ⚠️ 从 yfinance 切换到 Stooq 的原因：yfinance 限流严重，有被封 IP 的风险。Stooq 作为主力源，yfinance 仅用于拉取少量补充 ticker。
@@ -491,7 +480,7 @@ python -m lib.db stats   # 查看数据库统计信息
 ```
 stock-tracker/
 ├── config/
-│   └── tickers.json              # 监控股票列表（36只 + SPY 基准 + yfinance_only）
+│   └── tickers.json              # 监控股票列表
 ├── data/
 │   ├── stock_tracker.db          # SQLite 数据库（.gitignore）
 │   └── prices/                   # CSV 备份缓存（.gitignore）
