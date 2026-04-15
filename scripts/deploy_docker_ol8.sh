@@ -238,7 +238,7 @@ init_data() {
     sudo docker compose exec -T web python -m lib.db init
 
     log_info "[2/6] 同步观察列表..."
-    sudo docker compose exec -T web python lib/config.py
+    sudo docker compose exec -T web python -m lib.config
 
     log_info "[3/6] 拉取价格数据（可能需要几分钟）..."
     sudo docker compose exec -T web python scripts/save_prices_yfinance.py --mode all

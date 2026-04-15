@@ -15,6 +15,11 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
+# 确保项目根目录在 sys.path 中（支持 python lib/config.py 直接运行）
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 from lib.db import upsert_watchlist, get_watchlist, init_db
 from lib.models import TickerInfo
 

@@ -784,7 +784,7 @@ python -m lib.db stats
 
 # 如果为空，重新初始化并拉取数据
 python -m lib.db init
-python lib/config.py
+python -m lib.config
 python scripts/save_prices_yfinance.py
 python scripts/market_pulse.py
 python scripts/stage2_monitor.py
