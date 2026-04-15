@@ -15,8 +15,12 @@
   - [Step 9: HTTPS 证书（Let's Encrypt）](#step-9-https-证书lets-encrypt)
   - [Step 10: Oracle Cloud 防火墙](#step-10-oracle-cloud-防火墙)
   - [Step 11: 定时数据更新（Cron）](#step-11-定时数据更新cron)
-- [三、日常运维](#三日常运维)
-- [四、故障排查](#四故障排查)
+- [三、Docker 部署（Oracle Cloud）](#三docker-部署oracle-cloud)
+  - [方式 A: 一键部署脚本](#方式-a-一键部署脚本)
+  - [方式 B: 手动分步部署](#方式-b-手动分步部署)
+  - [Docker 日常运维](#docker-日常运维)
+- [四、日常运维](#四日常运维)
+- [五、故障排查](#五故障排查)
 
 ---
 
@@ -459,7 +463,218 @@ crontab -e
 
 ---
 
-## 三、日常运维
+## 三、Docker 部署（Oracle Cloud）
+
+### 选择部署脚本
+
+根据你的 Oracle Cloud 实例系统镜像选择对应脚本：
+
+| 系统镜像 | 部署脚本 | 包管理器 | 防火墙 |
+|----------|---------|---------|--------|
+| **Ubuntu 22.04/24.04** | `scripts/deploy_docker.sh` | apt | iptables |
+| **Oracle Linux 8.x** (如 `Oracle-Linux-8.6-aarch64`) | `scripts/deploy_docker_ol8.sh` | dnf | firewalld |
+
+> **💡 如何确认系统？** SSH 登录后执行 `cat /etc/os-release`
+
+### 项目已包含的 Docker 文件
+
+| 文件 | 说明 |
+|------|------|
+| `Dockerfile` | 多阶段构建，生成轻量运行镜像（兼容 ARM64 & x86_64） |
+| `docker-compose.yml` | 定义服务、端口映射、数据卷持久化 |
+| `.dockerignore` | 排除不需要的文件，减小镜像体积 |
+| `scripts/deploy_docker.sh` | 一键部署脚本 — **Ubuntu** |
+| `scripts/deploy_docker_ol8.sh` | 一键部署脚本 — **Oracle Linux 8** |
+
+### 方式 A: 一键部署脚本
+
+这是最简单的方式，脚本会自动完成所有步骤（安装 Docker、构建镜像、初始化数据、配置 Nginx + HTTPS、防火墙、Cron 定时任务）。
+
+#### 1. SSH 登录服务器
+
+```bash
+# Ubuntu 实例默认用户是 ubuntu
+ssh -i <你的私钥路径> ubuntu@<你的公网IP>
+
+# Oracle Linux 实例默认用户是 opc
+ssh -i <你的私钥路径> opc@<你的公网IP>
+```
+
+#### 2. 拉取代码
+
+```bash
+sudo mkdir -p /opt/stock-tracker
+sudo chown $USER:$USER /opt/stock-tracker
+git clone https://github.com/<你的用户名>/stock-tracker.git /opt/stock-tracker
+cd /opt/stock-tracker
+```
+
+#### 3. 修改部署配置
+
+编辑脚本顶部的配置变量：
+
+```bash
+# Ubuntu 系统
+nano scripts/deploy_docker.sh
+
+# Oracle Linux 8 系统
+nano scripts/deploy_docker_ol8.sh
+```
+
+需要修改的变量：
+
+```bash
+DOMAIN="stocks.example.com"     # 你的域名（留空则跳过 Nginx/SSL）
+EMAIL="your@email.com"          # Let's Encrypt 证书邮箱
+GIT_REPO="https://github.com/<你的用户名>/stock-tracker.git"
+```
+
+#### 4. 执行部署
+
+```bash
+# Ubuntu 系统
+bash scripts/deploy_docker.sh
+
+# Oracle Linux 8 系统
+bash scripts/deploy_docker_ol8.sh
+```
+
+脚本会依次执行：
+1. ✅ 安装 Docker
+2. ✅ 构建 Docker 镜像
+3. ✅ 启动容器
+4. ✅ 初始化数据库 & 拉取数据
+5. ✅ 配置 Nginx 反向代理 + HTTPS
+6. ✅ 配置 OS 防火墙
+7. ✅ 设置 Cron 定时数据更新
+
+> **⚠️ 别忘了**：还需要在 Oracle Cloud 控制台的 **Security List** 中放行 TCP 80 和 443 端口（参见 [Step 10](#step-10-oracle-cloud-防火墙)）。
+
+#### 5. 后续更新
+
+本地修改代码推送后，在服务器上一条命令即可更新：
+
+```bash
+# Ubuntu
+bash scripts/deploy_docker.sh --update
+
+# Oracle Linux 8
+bash scripts/deploy_docker_ol8.sh --update
+```
+
+### 方式 B: 手动分步部署
+
+如果你想更精细地控制每一步，可以手动执行：
+
+#### 1. 安装 Docker
+
+```bash
+# 安装 Docker（官方脚本）
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER
+
+# 重新登录 SSH 使 docker 组生效，或执行:
+newgrp docker
+```
+
+#### 2. 拉取代码 & 构建镜像
+
+```bash
+cd /opt/stock-tracker
+
+# 构建镜像
+docker compose build
+
+# 启动容器（后台运行）
+docker compose up -d
+```
+
+#### 3. 初始化数据
+
+```bash
+# 初始化数据库
+docker compose exec web python -m lib.db init
+
+# 同步观察列表
+docker compose exec web python lib/config.py
+
+# 拉取价格数据
+docker compose exec web python scripts/save_prices_yfinance.py --mode all
+
+# 运行策略
+docker compose exec web python scripts/market_pulse.py --cron
+docker compose exec web python scripts/stage2_monitor.py --cron
+docker compose exec web python scripts/vcp_scanner.py --cron
+docker compose exec web python scripts/bottom_fisher.py --cron
+```
+
+#### 4. 验证
+
+```bash
+# 查看容器状态
+docker compose ps
+
+# 查看日志
+docker compose logs -f
+
+# 测试访问
+curl http://127.0.0.1:8000
+```
+
+> Nginx、HTTPS、防火墙的配置与[方式二（Linux 直接部署）](#step-7-nginx-反向代理)相同，此处不再重复。
+
+#### 5. 可选：上传 Windows 本地数据库
+
+如果你想跳过数据拉取步骤，可以从 Windows 上传已有数据库：
+
+```bash
+# 在 Windows 本地执行
+scp -i <私钥> D:\eh\projects\stock-tracker\data\stock_tracker.db ubuntu@<公网IP>:/tmp/
+
+# 在服务器上将数据库复制到 Docker 数据卷
+docker compose cp /tmp/stock_tracker.db web:/app/data/stock_tracker.db
+```
+
+### Docker 日常运维
+
+```bash
+cd /opt/stock-tracker
+
+# ---------- 容器管理 ----------
+docker compose up -d              # 启动
+docker compose down                # 停止并移除容器
+docker compose restart             # 重启
+docker compose ps                  # 查看状态
+docker compose logs -f             # 实时日志
+docker compose logs --tail=100     # 最近 100 行日志
+
+# ---------- 更新部署 ----------
+git pull origin main               # 拉取最新代码
+docker compose up -d --build       # 重新构建并启动
+
+# 或使用一键脚本:
+bash scripts/deploy_docker.sh --update
+
+# ---------- 数据库操作 ----------
+# 进入容器
+docker compose exec web bash
+
+# 在容器内执行命令
+docker compose exec web python -m lib.db stats
+
+# 备份数据库（从数据卷复制到宿主机）
+docker compose cp web:/app/data/stock_tracker.db ./backup_$(date +%Y%m%d).db
+
+# ---------- 手动触发数据更新 ----------
+bash scripts/docker_daily_update.sh
+
+# ---------- 查看部署状态 ----------
+bash scripts/deploy_docker.sh --status
+```
+
+---
+
+## 四、日常运维
 
 ### 代码更新
 
@@ -517,7 +732,7 @@ crontab -e
 
 ---
 
-## 四、故障排查
+## 五、故障排查
 
 ### 常见问题
 

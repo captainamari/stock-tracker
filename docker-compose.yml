@@ -1,0 +1,38 @@
+# ============================================================
+# Stock Tracker — Docker Compose
+# ============================================================
+# 用法:
+#   docker compose up -d          # 启动
+#   docker compose down            # 停止
+#   docker compose logs -f         # 查看日志
+#   docker compose up -d --build   # 重新构建并启动
+# ============================================================
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stock-tracker
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # 持久化数据库和日志（容器重建后数据不丢失）
+      - stock-data:/app/data
+      - stock-logs:/app/logs
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  stock-data:
+    driver: local
+  stock-logs:
+    driver: local
