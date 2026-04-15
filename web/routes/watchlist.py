@@ -29,6 +29,7 @@ def _build_watchlist_data(sector: Optional[str] = None,
     bf_states = {s["symbol"]: s for s in db.get_strategy_states("bottom_fisher")}
 
     # 4. 获取最新策略结果 (用于 score 和 metrics)
+    #    按 market_pulse latest_date 批量查一次（大多数 ticker 的结果与此日期一致）
     stage2_results = {}
     vcp_results = {}
     bf_results = {}
@@ -47,6 +48,23 @@ def _build_watchlist_data(sector: Optional[str] = None,
         s2 = stage2_results.get(sym, {})
         vcp = vcp_results.get(sym, {})
         bf = bf_results.get(sym, {})
+
+        # Fallback: 如果按 latest_date 查不到策略结果（例如 Web 新增的 ticker
+        # 其策略结果日期可能与批量跑的 market_pulse 日期不同），
+        # 则回退查询该 ticker 最新的一条策略结果。
+        if not s2:
+            fallback = db.get_strategy_results("stage2", symbol=sym, limit=1)
+            if fallback:
+                s2 = fallback[0]
+        if not vcp:
+            fallback = db.get_strategy_results("vcp", symbol=sym, limit=1)
+            if fallback:
+                vcp = fallback[0]
+        if not bf:
+            fallback = db.get_strategy_results("bottom_fisher", symbol=sym, limit=1)
+            if fallback:
+                bf = fallback[0]
+
         s2_state = stage2_states.get(sym, {})
         vcp_state = vcp_states.get(sym, {})
         bf_state = bf_states.get(sym, {})

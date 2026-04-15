@@ -20,6 +20,8 @@ bottom_fisher.py          → 策略3: 抄底左侧信号（独立运行）
     Jinja2 模板 → reports/daily/ (MD + Telegram HTML)
         ↓
     web/app.py               → Phase 4: Web Dashboard (FastAPI + Chart.js)
+        ↓
+    lib/pipeline.py           → Phase 5: Web Ticker 管理（验证 + 拉取 + 策略管道）
 ```
 
 ### 策略定位对比
@@ -42,6 +44,7 @@ bottom_fisher.py          → 策略3: 抄底左侧信号（独立运行）
 | Phase 2 | 改造各策略脚本，计算结果存入 DB + 保留现有文件输出（双写过渡） | ✅ 已完成 |
 | Phase 3 | 抽取 Jinja2 报告模板，报告从 DB 数据渲染 | ✅ 已完成 |
 | Phase 4 | 开发 Web 应用（Dashboard + Watchlist + Ticker Detail） | ✅ 已完成 |
+| Phase 5 | Web Ticker 管理（验证 + 新增 + 删除 + 单 Ticker Pipeline） | ✅ 已完成 |
 
 ---
 
@@ -82,10 +85,10 @@ bottom_fisher.py          → 策略3: 抄底左侧信号（独立运行）
            ▼                ▼                    ▼
      策略分析脚本      lib/indicators.py     lib/models.py
      (scripts/*.py)    (共享技术指标)        (数据模型)
-           │
-           ▼
-     lib/report.py + templates/*.j2
-           │
+           │                                      │
+           ▼                                      ▼
+     lib/report.py + templates/*.j2         lib/pipeline.py
+           │                               (Web 单 Ticker 管道)
            ▼
      reports/daily/ (MD + Telegram HTML + manifest)
 ```
@@ -362,6 +365,10 @@ stage2_monitor.py  ──→  strategy_results/states
 - 上下文管理器 `get_db()` 自动提交/回滚
 - 所有 CRUD 操作集中管理，策略脚本零直接 SQL
 - `get_prices_as_dataframe()` 返回兼容旧 CSV 格式的 pandas DataFrame
+- Phase 5 新增：
+  - `get_watchlist_item(symbol)` — 获取单个 watchlist 条目（含已禁用），用于 Web 添加时检查是否曾存在
+  - `set_ticker_enabled(symbol, enabled)` — 设置 ticker 启用/禁用状态（软删除/恢复）
+  - `get_price_count(symbol)` — 获取价格记录数，判断恢复时是否需要重新拉取数据
 
 ### `lib/config.py` — 配置加载 & 观察列表同步
 - 从 `config/tickers.json` 读取配置
@@ -399,6 +406,31 @@ stage2_monitor.py  ──→  strategy_results/states
 - 自定义过滤器：`tg_escape`、`score_emoji_*`、`chg_emoji`、`score_bar`、`progress_bar`、`fmt_pct`、`fmt_price`、`fmt_val`
 - `split_telegram_message()` — 按段落边界分割长消息（Telegram 4000 字符限制）
 - `save_reports()` — 统一保存 MD + Telegram HTML + manifest
+
+### `lib/pipeline.py` — Web 单 Ticker 管道（Phase 5 新增）
+
+Web 添加 ticker 时使用的完整处理管道，由两个核心函数组成：
+
+#### `validate_ticker(symbol)` — 三层验证
+
+| 层级 | 方法 | 耗时 | 说明 |
+|------|------|------|------|
+| L1 | 正则格式校验 | ~0ms | 1-5 个大写字母，可带 `.A`/`.B` 后缀 |
+| L2 | `yf.Ticker(s).info` 元数据检查 | ~1s | 确认 `shortName`/`longName` 存在 |
+| L3 | 试拉 5 天历史数据 | ~1s | 确认数据源可用，非极新 IPO |
+
+返回包含 `valid`、`name`、`sector`、`exchange`、`market_price` 等元数据的验证结果。
+
+#### `run_single_ticker_pipeline(symbol, name, sector)` — 完整策略管道
+
+| 步骤 | 操作 | 说明 |
+|------|------|------|
+| Step 1 | 拉取 365 天历史价格（yfinance）→ `upsert_prices()` | 价格数据入库 |
+| Step 2 | 运行 Stage 2 分析 → `save_strategy_result()` + `upsert_strategy_state()` | 趋势确认 |
+| Step 3 | 运行 VCP 分析（仅当 Stage 2 active） | 右侧追涨 |
+| Step 4 | 运行 Bottom Fisher 分析 | 左侧抄底 |
+
+**特殊处理**：管道使用当天日期 (`datetime.now()`) 作为策略结果的 `date_str`，这可能与批量 cron 产生的 `market_pulse.latest_date` 不同。Web 端（watchlist/ticker/API）通过 **fallback 查询**机制解决此日期不匹配问题——当按 `latest_date` 查不到策略结果时，回退查询该 ticker 最新的一条结果。
 
 ---
 
@@ -492,6 +524,7 @@ stock-tracker/
 │   ├── db.py                     # SQLite 数据访问层（~800行，项目核心）
 │   ├── indicators.py             # 共享技术指标库
 │   ├── models.py                 # 数据模型（dataclass）
+│   ├── pipeline.py               # Web 单 Ticker 管道（验证 + 拉取 + 策略）
 │   └── report.py                 # 报告生成共享工具（Jinja2）
 ├── templates/
 │   ├── stage2_md.j2 / stage2_tg.j2
@@ -610,13 +643,41 @@ uvicorn web.app:app --reload --port 8000
 | 页面 | 路径 | 功能 |
 |------|------|------|
 | **Dashboard** | `/` | Market Pulse 状态 + 三策略信号摘要 + 近期信号变化 + 30天走势图 |
-| **Watchlist** | `/watchlist` | 全部监控股票的多策略横向对照表，支持板块筛选/搜索/仅信号过滤 |
+| **Watchlist** | `/watchlist` | 全部监控股票的多策略横向对照表，支持板块筛选/搜索/仅信号过滤 + **Ticker 新增/删除** |
 | **Ticker Detail** | `/ticker/{symbol}` | 个股三策略状态卡片 + 条件明细 + 关键指标 + 信号历史 + Score 走势图 |
+
+### Web Ticker 管理（Phase 5 新增）
+
+通过 Watchlist 页面的 **"➕ 添加 Ticker"** 按钮和每行的 **"×" 移除按钮**，直接在 Web 上管理观察列表，无需编辑 `tickers.json`。
+
+#### 添加流程
+
+```
+用户输入 Ticker → 点击"验证" → yfinance 三层验证 → 显示元数据（名称/板块/价格）
+                                                          ↓
+                              点击"添加到观察列表" → 写入 watchlist 表
+                                                          ↓
+                              run_single_ticker_pipeline() → 拉取价格 + 跑全部策略
+                                                          ↓
+                                                   页面自动刷新 → 展示完整数据
+```
+
+**特殊情况处理**：
+- **已存在且启用** → 提示已在列表中，阻止重复添加
+- **曾被移除（enabled=0）** → 提示可恢复，恢复后复用已有数据或重新拉取
+- **全新 Ticker** → 完整验证 + 管道执行
+
+#### 删除方式
+
+**软删除**（`enabled=0`），不物理删除任何数据。后续可通过"添加"操作恢复显示。
 
 ### API 端点
 
 | 端点 | 说明 |
 |------|------|
+| `GET /api/tickers/check/{symbol}` | **Phase 5** 验证 ticker（三层验证 + 已存在检查） |
+| `POST /api/tickers` | **Phase 5** 新增 ticker（验证 → 写入 watchlist → 运行策略管道） |
+| `DELETE /api/tickers/{symbol}` | **Phase 5** 软删除 ticker（设 `enabled=0`，不删数据） |
 | `GET /api/dashboard` | Dashboard 全量数据 JSON |
 | `GET /api/market-pulse/latest` | 最新 Market Pulse |
 | `GET /api/market-pulse/history?days=30` | Market Pulse 历史走势 |
@@ -632,7 +693,8 @@ uvicorn web.app:app --reload --port 8000
 | 模板 | Jinja2 SSR | 服务端渲染，复用 Phase 3 能力 |
 | 样式 | 手写 CSS（深色主题） | 金融工具标配，护眼 |
 | 图表 | Chart.js (CDN) | 轻量折线图 |
-| 交互 | Vanilla JS | 客户端表格排序/筛选 |
+| 交互 | Vanilla JS | 客户端表格排序/筛选 + Ticker 管理（Modal + Fetch API） |
+| 数据管道 | lib/pipeline.py | 单 Ticker 验证 + 拉取 + 策略分析（Phase 5） |
 
 ### Web 目录结构
 
@@ -644,15 +706,15 @@ web/
 ├── routes/
 │   ├── __init__.py
 │   ├── dashboard.py          # Dashboard 首页路由
-│   ├── watchlist.py          # Watchlist 列表路由
-│   ├── ticker.py             # Ticker Detail 详情路由
-│   └── api.py                # 纯 JSON API 路由
+│   ├── watchlist.py          # Watchlist 列表路由（含 fallback 查询）
+│   ├── ticker.py             # Ticker Detail 详情路由（含 fallback 查询）
+│   └── api.py                # JSON API（含 Ticker 管理 CRUD + fallback 查询）
 ├── templates/
-│   ├── base.html             # 基础布局（导航 + 页脚）
+│   ├── base.html             # 基础布局（导航 + 页脚 + Modal Overlay）
 │   ├── dashboard.html        # Dashboard 页面
-│   ├── watchlist.html        # Watchlist 页面
+│   ├── watchlist.html        # Watchlist 页面（含添加 Ticker 弹窗 + 移除按钮）
 │   └── ticker_detail.html    # Ticker Detail 页面
 └── static/
-    ├── css/style.css         # 深色主题样式
-    └── js/main.js            # 表格排序/筛选逻辑
+    ├── css/style.css         # 深色主题样式（含 Modal + 验证状态样式）
+    └── js/main.js            # 表格排序/筛选 + Ticker 验证/添加/移除交互逻辑
 ```

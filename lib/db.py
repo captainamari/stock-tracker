@@ -261,6 +261,29 @@ def get_watchlist(enabled_only: bool = True, source_type: Optional[str] = None,
         return [dict(r) for r in rows]
 
 
+def get_watchlist_item(symbol: str, db_path: Optional[Path] = None) -> Optional[Dict]:
+    """
+    获取单个 watchlist 条目（不论 enabled 状态）。
+    用于检查 ticker 是否曾经存在于 watchlist 中。
+    """
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM watchlist WHERE symbol = ?", (symbol,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def set_ticker_enabled(symbol: str, enabled: bool, db_path: Optional[Path] = None):
+    """
+    设置 ticker 的 enabled 状态（软删除/恢复）。
+    """
+    with get_db(db_path) as conn:
+        conn.execute(
+            "UPDATE watchlist SET enabled = ?, updated_at = ? WHERE symbol = ?",
+            (1 if enabled else 0, datetime.now().isoformat(), symbol)
+        )
+
+
 # ============================================================
 # Stock Prices (价格数据)
 # ============================================================

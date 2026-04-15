@@ -36,6 +36,8 @@ def _build_ticker_data(symbol: str) -> dict:
     bf_state = db.get_strategy_state(symbol, "bottom_fisher")
 
     # 4. 最新策略结果
+    #    先按 market_pulse latest_date 查；查不到则 fallback 查该 ticker 最新一条
+    #    （Web 新增的 ticker 策略结果日期可能与批量 market_pulse 日期不同）
     s2_result = None
     vcp_result = None
     bf_result = None
@@ -46,6 +48,17 @@ def _build_ticker_data(symbol: str) -> dict:
         vcp_result = vcp_results[0] if vcp_results else None
         bf_results = db.get_strategy_results("bottom_fisher", date_str=latest_date, symbol=symbol)
         bf_result = bf_results[0] if bf_results else None
+
+    # Fallback: 按 latest_date 查不到时，回退查该 ticker 最新一条策略结果
+    if not s2_result:
+        fallback = db.get_strategy_results("stage2", symbol=symbol, limit=1)
+        s2_result = fallback[0] if fallback else None
+    if not vcp_result:
+        fallback = db.get_strategy_results("vcp", symbol=symbol, limit=1)
+        vcp_result = fallback[0] if fallback else None
+    if not bf_result:
+        fallback = db.get_strategy_results("bottom_fisher", symbol=symbol, limit=1)
+        bf_result = fallback[0] if fallback else None
 
     # 5. 信号变化历史
     signal_changes = db.get_signal_changes(symbol=symbol, limit=30)
