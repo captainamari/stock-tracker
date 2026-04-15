@@ -603,6 +603,8 @@ uvicorn web.app:app --reload --port 8000
 # http://127.0.0.1:8000
 ```
 
+> 📖 **完整部署指南**（含 Linux 服务器 / Oracle Cloud / 域名配置 / HTTPS）请参见 [DEPLOY.md](DEPLOY.md)
+
 ### 三个核心页面
 
 | 页面 | 路径 | 功能 |

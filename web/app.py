@@ -52,11 +52,17 @@ app.include_router(api.router, prefix="/api")
 # CLI 入口
 # ============================================================
 if __name__ == "__main__":
+    import os
     import uvicorn
+
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", "8000"))
+    reload = os.environ.get("RELOAD", "true").lower() == "true"
+
     uvicorn.run(
         "web.app:app",
-        host="127.0.0.1",
-        port=8000,
-        reload=True,
-        reload_dirs=[str(ROOT_DIR)],
+        host=host,
+        port=port,
+        reload=reload,
+        reload_dirs=[str(ROOT_DIR)] if reload else None,
     )
