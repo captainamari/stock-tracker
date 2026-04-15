@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Watchlist — Stock Tracker{% endblock %}
+
+{% block content %}
+<div class="card-header" style="margin-bottom:16px;">
+    <span class="card-title" style="font-size:20px;">📋 Watchlist — 观察列表</span>
+    <span class="card-subtitle">{{ rows | length }} 只股票{% if filter_signal_only %} (仅信号){% endif %}{% if filter_sector %} · {{ filter_sector }}{% endif %}</span>
+</div>
+
+{# ============================================================ #}
+{# 筛选栏                                                        #}
+{# ============================================================ #}
+<form class="filters-bar" method="get" action="/watchlist" id="filterForm">
+    <select name="sector" class="filter-select" onchange="this.form.submit()">
+        <option value="">全部板块</option>
+        {% for s in all_sectors %}
+        <option value="{{ s }}" {% if filter_sector == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+    </select>
+
+    <label class="filter-checkbox">
+        <input type="checkbox" name="signal_only" value="true"
+               {% if filter_signal_only %}checked{% endif %}
+               onchange="this.form.submit()">
+        仅显示有信号的
+    </label>
+
+    <input type="text" name="search" class="filter-input" placeholder="搜索 ticker / 名称..."
+           value="{{ filter_search }}" />
+
+    <button type="submit" style="background:var(--blue);color:white;border:none;padding:8px 16px;border-radius:var(--radius);cursor:pointer;font-size:13px;">搜索</button>
+</form>
+
+{# ============================================================ #}
+{# 股票列表表格                                                  #}
+{# ============================================================ #}
+<div class="card" style="padding:0; overflow-x:auto;">
+    <table class="data-table" id="watchlistTable">
+        <thead>
+            <tr>
+                <th data-sort="symbol">Ticker</th>
+                <th data-sort="name">Name</th>
+                <th data-sort="sector">Sector</th>
+                <th data-sort="price" class="col-num">Price</th>
+                <th data-sort="chg_5d" class="col-num">5D Chg</th>
+                <th data-sort="chg_20d" class="col-num">20D Chg</th>
+                <th data-sort="s2_score" class="col-center">Stage 2</th>
+                <th data-sort="vcp_score" class="col-center">VCP</th>
+                <th data-sort="bf_score" class="col-center">Bottom Fisher</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr data-symbol="{{ r.symbol }}"
+                data-name="{{ r.name }}"
+                data-sector="{{ r.sector }}"
+                data-price="{{ r.price or 0 }}"
+                data-chg_5d="{{ r.chg_5d or 0 }}"
+                data-chg_20d="{{ r.chg_20d or 0 }}"
+                data-s2_score="{{ r.s2_score or 0 }}"
+                data-vcp_score="{{ r.vcp_score or 0 }}"
+                data-bf_score="{{ r.bf_score or 0 }}">
+
+                <td class="col-ticker">
+                    <a href="/ticker/{{ r.symbol }}">{{ r.symbol }}</a>
+                </td>
+                <td class="col-name">{{ r.name }}</td>
+                <td><span style="font-size:12px;color:var(--text-secondary);">{{ r.sector }}</span></td>
+                <td class="col-num">{{ r.price | fmt_price }}</td>
+                <td class="col-num {{ r.chg_5d | chg_color }}">{{ r.chg_5d | fmt_pct }}</td>
+                <td class="col-num {{ r.chg_20d | chg_color }}">{{ r.chg_20d | fmt_pct }}</td>
+
+                {# Stage 2 #}
+                <td class="col-center">
+                    {% if r.s2_active %}
+                    <span class="signal-badge active">🟢 {{ r.s2_score | fmt_score }}</span>
+                    {% elif r.s2_score is not none %}
+                    <span class="signal-badge inactive">{{ r.s2_score | fmt_score }}</span>
+                    {% else %}
+                    <span class="text-dim">—</span>
+                    {% endif %}
+                </td>
+
+                {# VCP #}
+                <td class="col-center">
+                    {% if r.vcp_active %}
+                    <span class="signal-badge vcp-active">🎯 {{ r.vcp_score | fmt_score }}</span>
+                    {% elif r.vcp_score is not none and r.vcp_score > 0 %}
+                    <span class="signal-badge inactive">{{ r.vcp_score | fmt_score }}</span>
+                    {% else %}
+                    <span class="text-dim">—</span>
+                    {% endif %}
+                </td>
+
+                {# Bottom Fisher #}
+                <td class="col-center">
+                    {% if r.bf_active %}
+                    <span class="signal-badge bf-active">🔻 {{ r.bf_score | fmt_score }}</span>
+                    {% elif r.bf_score is not none and r.bf_score > 0 %}
+                    <span class="signal-badge inactive">{{ r.bf_score | fmt_score }}</span>
+                    {% else %}
+                    <span class="text-dim">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if not rows %}
+<div class="card">
+    <div class="empty-state">没有匹配的股票</div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 表头点击排序
+    initTableSort('watchlistTable');
+</script>
+{% endblock %}

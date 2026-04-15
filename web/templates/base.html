@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Stock Tracker{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Header -->
+        <header class="app-header">
+            <a href="/" class="logo">📊 Stock Tracker</a>
+            <nav class="app-nav">
+                <a href="/" class="{% if page == 'dashboard' %}active{% endif %}">Dashboard</a>
+                <a href="/watchlist" class="{% if page == 'watchlist' %}active{% endif %}">Watchlist</a>
+            </nav>
+        </header>
+
+        <!-- Main Content -->
+        <main class="app-main">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- Footer -->
+        <footer style="text-align:center; padding:16px; color:var(--text-dim); font-size:12px; border-top:1px solid var(--border);">
+            Stock Tracker v4.0 — Phase 4 Web Dashboard
+            {% if latest_date %} · Data: {{ latest_date }}{% endif %}
+        </footer>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -18,6 +18,8 @@ vcp_scanner.py            → 策略2: VCP 右侧追涨（依赖 Stage 2）
 bottom_fisher.py          → 策略3: 抄底左侧信号（独立运行）
         ↓
     Jinja2 模板 → reports/daily/ (MD + Telegram HTML)
+        ↓
+    web/app.py               → Phase 4: Web Dashboard (FastAPI + Chart.js)
 ```
 
 ### 策略定位对比
@@ -39,7 +41,7 @@ bottom_fisher.py          → 策略3: 抄底左侧信号（独立运行）
 | Phase 1 | 创建独立项目 + 数据库 Schema + `lib/db.py` + 数据迁移脚本（CSV→DB） | ✅ 已完成 |
 | Phase 2 | 改造各策略脚本，计算结果存入 DB + 保留现有文件输出（双写过渡） | ✅ 已完成 |
 | Phase 3 | 抽取 Jinja2 报告模板，报告从 DB 数据渲染 | ✅ 已完成 |
-| Phase 4 | 开发 Web 应用（Dashboard + Watchlist + Ticker Detail） | 🚧 待开发 |
+| Phase 4 | 开发 Web 应用（Dashboard + Watchlist + Ticker Detail） | ✅ 已完成 |
 
 ---
 
@@ -506,6 +508,12 @@ stock-tracker/
 │   └── migrate_prices.py         # 数据迁移工具（CSV/JSON → SQLite）
 ├── reports/
 │   └── daily/                    # 每日报告存档（.md + .html + manifest）
+├── web/                          # Phase 4: Web Dashboard
+│   ├── app.py                    # FastAPI 主入口
+│   ├── deps.py                   # Jinja2 模板 + 过滤器
+│   ├── routes/                   # 路由（dashboard/watchlist/ticker/api）
+│   ├── templates/                # HTML 模板（base/dashboard/watchlist/detail）
+│   └── static/                   # CSS（深色主题）+ JS（排序/筛选）
 ├── logs/                         # 日志文件（.gitignore）
 ├── requirements.txt              # Python 依赖
 ├── .gitignore
@@ -571,5 +579,78 @@ BF_PARAMS = {
 | `pandas-datareader` | ≥ 0.10.0 | 辅助数据获取 |
 | `jinja2` | ≥ 3.1.0 | 模板引擎 |
 | *SQLite* | *内置* | 数据库（Python 标准库） |
-| *(Phase 4)* `fastapi` | ≥ 0.100.0 | Web 框架 |
-| *(Phase 4)* `uvicorn` | ≥ 0.23.0 | ASGI 服务器 |
+| `fastapi` | ≥ 0.100.0 | Web 框架 (Phase 4) |
+| `uvicorn` | ≥ 0.23.0 | ASGI 服务器 (Phase 4) |
+
+---
+
+## Phase 4: Web Dashboard
+
+### 概述
+
+基于 FastAPI + Jinja2 SSR + Chart.js 的本地 Web Dashboard，提供三个核心页面，复用 Phase 1-3 的全部 `lib/db.py` 查询 API，零数据库改造。
+
+### 启动方式
+
+```bash
+# 方式一：直接启动
+python -m web.app
+
+# 方式二：使用 uvicorn（支持热重载）
+uvicorn web.app:app --reload --port 8000
+
+# 打开浏览器访问
+# http://127.0.0.1:8000
+```
+
+### 三个核心页面
+
+| 页面 | 路径 | 功能 |
+|------|------|------|
+| **Dashboard** | `/` | Market Pulse 状态 + 三策略信号摘要 + 近期信号变化 + 30天走势图 |
+| **Watchlist** | `/watchlist` | 全部监控股票的多策略横向对照表，支持板块筛选/搜索/仅信号过滤 |
+| **Ticker Detail** | `/ticker/{symbol}` | 个股三策略状态卡片 + 条件明细 + 关键指标 + 信号历史 + Score 走势图 |
+
+### API 端点
+
+| 端点 | 说明 |
+|------|------|
+| `GET /api/dashboard` | Dashboard 全量数据 JSON |
+| `GET /api/market-pulse/latest` | 最新 Market Pulse |
+| `GET /api/market-pulse/history?days=30` | Market Pulse 历史走势 |
+| `GET /api/signals/recent?limit=20` | 近期信号变化 |
+| `GET /api/ticker/{symbol}` | 个股策略数据 |
+| `GET /api/ticker/{symbol}/history?strategy=stage2&days=30` | 个股策略历史 |
+
+### 技术栈
+
+| 组件 | 选型 | 说明 |
+|------|------|------|
+| 后端 | FastAPI + Uvicorn | 高性能 ASGI 框架 |
+| 模板 | Jinja2 SSR | 服务端渲染，复用 Phase 3 能力 |
+| 样式 | 手写 CSS（深色主题） | 金融工具标配，护眼 |
+| 图表 | Chart.js (CDN) | 轻量折线图 |
+| 交互 | Vanilla JS | 客户端表格排序/筛选 |
+
+### Web 目录结构
+
+```
+web/
+├── __init__.py
+├── app.py                    # FastAPI 主入口
+├── deps.py                   # Jinja2 模板引擎 + 自定义过滤器
+├── routes/
+│   ├── __init__.py
+│   ├── dashboard.py          # Dashboard 首页路由
+│   ├── watchlist.py          # Watchlist 列表路由
+│   ├── ticker.py             # Ticker Detail 详情路由
+│   └── api.py                # 纯 JSON API 路由
+├── templates/
+│   ├── base.html             # 基础布局（导航 + 页脚）
+│   ├── dashboard.html        # Dashboard 页面
+│   ├── watchlist.html        # Watchlist 页面
+│   └── ticker_detail.html    # Ticker Detail 页面
+└── static/
+    ├── css/style.css         # 深色主题样式
+    └── js/main.js            # 表格排序/筛选逻辑
+```

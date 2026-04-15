@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+{% block title %}{{ symbol }} — Stock Tracker{% endblock %}
+
+{% block content %}
+
+{# ============================================================ #}
+{# Ticker Header                                                 #}
+{# ============================================================ #}
+<div class="ticker-header">
+    <a href="/watchlist" class="back-link">← 返回 Watchlist</a>
+    <h1>
+        {{ symbol }}
+        <span style="font-weight:400; font-size:18px; color:var(--text-secondary);">— {{ ticker.name }}</span>
+        <span class="sector-tag">{{ ticker.sector }}</span>
+    </h1>
+    <div class="ticker-price">
+        {% if metrics.price %}
+        <span class="price-value">{{ metrics.price | fmt_price }}</span>
+        {% endif %}
+        {% if metrics.chg_5d is not none %}
+        <span class="price-chg {{ metrics.chg_5d | chg_color }}">5D: {{ metrics.chg_5d | fmt_pct }}</span>
+        {% endif %}
+        {% if metrics.chg_20d is not none %}
+        <span class="price-chg {{ metrics.chg_20d | chg_color }}">20D: {{ metrics.chg_20d | fmt_pct }}</span>
+        {% endif %}
+        {% if latest_date %}
+        <span style="font-size:12px; color:var(--text-dim);">{{ latest_date }}</span>
+        {% endif %}
+    </div>
+</div>
+
+{# ============================================================ #}
+{# 三策略状态卡片                                                #}
+{# ============================================================ #}
+<div class="detail-grid">
+    {# Stage 2 卡片 #}
+    <div class="detail-card {% if s2_state and s2_state.is_active %}active{% else %}inactive{% endif %}">
+        <div class="detail-card-header">
+            <h3>🟢 Stage 2</h3>
+            {% if s2_state and s2_state.is_active %}
+            <span class="detail-card-status on">活跃</span>
+            {% else %}
+            <span class="detail-card-status off">非活跃</span>
+            {% endif %}
+        </div>
+        {% if s2_result %}
+        <div class="stat-row">
+            <span class="stat-label">Score</span>
+            <span class="stat-value {{ s2_result.score | score_color }}">{{ s2_result.score | fmt_score }}/100</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">条件</span>
+            <span class="stat-value">{{ s2_result.passed }}/{{ s2_result.total }}</span>
+        </div>
+        {% if s2_result.metrics and s2_result.metrics.trend_power is not none %}
+        <div class="stat-row">
+            <span class="stat-label">Trend Power</span>
+            <span class="stat-value">{{ s2_result.metrics.trend_power }}</span>
+        </div>
+        {% endif %}
+        {% if s2_result.metrics and s2_result.metrics.vol_signal %}
+        <div class="stat-row">
+            <span class="stat-label">成交量</span>
+            <span class="stat-value">{{ s2_result.metrics.vol_signal }}</span>
+        </div>
+        {% endif %}
+        {% if s2_state and s2_state.is_active and s2_state.entry_date %}
+        <div class="stat-row">
+            <span class="stat-label">入场日期</span>
+            <span class="stat-value">{{ s2_state.entry_date }}</span>
+        </div>
+        {% if s2_days is not none %}
+        <div class="stat-row">
+            <span class="stat-label">已持续</span>
+            <span class="stat-value">{{ s2_days }} 天</span>
+        </div>
+        {% endif %}
+        {% endif %}
+        {% else %}
+        <div class="empty-state">无 Stage 2 数据</div>
+        {% endif %}
+    </div>
+
+    {# VCP 卡片 #}
+    <div class="detail-card {% if vcp_state and vcp_state.is_active %}active{% else %}inactive{% endif %}">
+        <div class="detail-card-header">
+            <h3>🎯 VCP</h3>
+            {% if vcp_state and vcp_state.is_active %}
+            <span class="detail-card-status on">活跃</span>
+            {% else %}
+            <span class="detail-card-status off">非活跃</span>
+            {% endif %}
+        </div>
+        {% if vcp_result %}
+        <div class="stat-row">
+            <span class="stat-label">Score</span>
+            <span class="stat-value {{ vcp_result.score | score_color }}">{{ vcp_result.score | fmt_score }}/100</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">条件</span>
+            <span class="stat-value">{{ vcp_result.passed }}/{{ vcp_result.total }}</span>
+        </div>
+        {% if vcp_result.metrics and vcp_result.metrics.days_in_stage2 %}
+        <div class="stat-row">
+            <span class="stat-label">Stage 2 天数</span>
+            <span class="stat-value">{{ vcp_result.metrics.days_in_stage2 }}</span>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">
+            {% if not s2_state or not s2_state.is_active %}
+            不在 Stage 2 中，VCP 不适用
+            {% else %}
+            无 VCP 数据
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    {# Bottom Fisher 卡片 #}
+    <div class="detail-card {% if bf_state and bf_state.is_active %}active{% else %}inactive{% endif %}">
+        <div class="detail-card-header">
+            <h3>🔻 Bottom Fisher</h3>
+            {% if bf_state and bf_state.is_active %}
+            <span class="detail-card-status on">活跃</span>
+            {% else %}
+            <span class="detail-card-status off">非活跃</span>
+            {% endif %}
+        </div>
+        {% if bf_result %}
+        <div class="stat-row">
+            <span class="stat-label">Score</span>
+            <span class="stat-value {{ bf_result.score | score_color }}">{{ bf_result.score | fmt_score }}/100</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">条件</span>
+            <span class="stat-value">{{ bf_result.passed }}/{{ bf_result.total }}</span>
+        </div>
+        {% else %}
+        <div class="empty-state">无抄底数据</div>
+        {% endif %}
+    </div>
+</div>
+
+{# ============================================================ #}
+{# 条件明细 (活跃策略展开)                                       #}
+{# ============================================================ #}
+{% set active_result = s2_result if (s2_state and s2_state.is_active and s2_result) else (vcp_result if (vcp_state and vcp_state.is_active and vcp_result) else (bf_result if (bf_state and bf_state.is_active and bf_result) else s2_result)) %}
+
+{% if active_result and active_result.conditions %}
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">📋 条件明细 — {{ active_result.strategy | strategy_label }}</span>
+        <span class="card-subtitle">{{ active_result.passed }}/{{ active_result.total }} 条件满足</span>
+    </div>
+    <ul class="conditions-list">
+        {% for key, passed in active_result.conditions.items() %}
+        <li class="condition-item">
+            <span class="condition-icon">
+                {% if passed == true %}✅{% elif passed == false %}❌{% else %}⚪{% endif %}
+            </span>
+            <span class="condition-name">{{ key }}</span>
+            <span class="condition-detail">
+                {{ active_result.condition_details.get(key, '') if active_result.condition_details else '' }}
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{# ============================================================ #}
+{# 关键指标                                                       #}
+{# ============================================================ #}
+{% if metrics %}
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">📊 关键指标</span>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:8px;">
+        {% if metrics.sma50 is not none %}
+        <div class="stat-row"><span class="stat-label">SMA50</span><span class="stat-value">{{ metrics.sma50 | fmt_price }}</span></div>
+        {% endif %}
+        {% if metrics.sma150 is not none %}
+        <div class="stat-row"><span class="stat-label">SMA150</span><span class="stat-value">{{ metrics.sma150 | fmt_price }}</span></div>
+        {% endif %}
+        {% if metrics.sma200 is not none %}
+        <div class="stat-row"><span class="stat-label">SMA200</span><span class="stat-value">{{ metrics.sma200 | fmt_price }}</span></div>
+        {% endif %}
+        {% if metrics.week52_high is not none %}
+        <div class="stat-row"><span class="stat-label">52周高</span><span class="stat-value">{{ metrics.week52_high | fmt_price }}</span></div>
+        {% endif %}
+        {% if metrics.week52_low is not none %}
+        <div class="stat-row"><span class="stat-label">52周低</span><span class="stat-value">{{ metrics.week52_low | fmt_price }}</span></div>
+        {% endif %}
+        {% if metrics.pct_from_high is not none %}
+        <div class="stat-row"><span class="stat-label">距52周高</span><span class="stat-value {{ metrics.pct_from_high | chg_color }}">{{ metrics.pct_from_high | fmt_pct }}</span></div>
+        {% endif %}
+        {% if metrics.pct_above_sma200 is not none %}
+        <div class="stat-row"><span class="stat-label">vs SMA200</span><span class="stat-value {{ metrics.pct_above_sma200 | chg_color }}">{{ metrics.pct_above_sma200 | fmt_pct }}</span></div>
+        {% endif %}
+        {% if metrics.stock_return_6m is not none %}
+        <div class="stat-row"><span class="stat-label">6M 回报</span><span class="stat-value {{ metrics.stock_return_6m | chg_color }}">{{ metrics.stock_return_6m | fmt_pct }}</span></div>
+        {% endif %}
+        {% if metrics.spy_return_6m is not none %}
+        <div class="stat-row"><span class="stat-label">SPY 6M</span><span class="stat-value {{ metrics.spy_return_6m | chg_color }}">{{ metrics.spy_return_6m | fmt_pct }}</span></div>
+        {% endif %}
+        {% if metrics.sma50_slope is not none %}
+        <div class="stat-row"><span class="stat-label">SMA50斜率</span><span class="stat-value {{ metrics.sma50_slope | chg_color }}">{{ metrics.sma50_slope | fmt_pct }}</span></div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{# ============================================================ #}
+{# 信号历史 + Score 走势 并排                                    #}
+{# ============================================================ #}
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    {# 信号历史 #}
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">🕐 信号变化历史</span>
+        </div>
+        {% if signal_changes %}
+        <ul class="timeline">
+            {% for c in signal_changes[:15] %}
+            {% set info = c.change_type | change_type_info %}
+            <li class="timeline-item">
+                <span class="timeline-date">{{ c.date }}</span>
+                <span class="timeline-emoji">{{ info[0] }}</span>
+                <div class="timeline-content">
+                    <span>{{ info[1] }}</span>
+                    <span class="text-secondary">({{ c.strategy | strategy_label }})</span>
+                    <div class="detail">
+                        {% if c.score %}Score: {{ c.score | fmt_score }}{% endif %}
+                        {% if c.price %} · {{ c.price | fmt_price }}{% endif %}
+                    </div>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state">暂无信号变化记录</div>
+        {% endif %}
+    </div>
+
+    {# Score 走势图 #}
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">📈 Score 走势 (30天)</span>
+        </div>
+        <div class="chart-container" style="height:280px;">
+            <canvas id="scoreChart"></canvas>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Score 走势图 — 多策略叠加
+const s2Hist = {{ s2_history | tojson }};
+const vcpHist = {{ vcp_history | tojson }};
+const bfHist = {{ bf_history | tojson }};
+
+// 合并所有日期
+const allDates = new Set();
+s2Hist.forEach(d => allDates.add(d.date));
+vcpHist.forEach(d => allDates.add(d.date));
+bfHist.forEach(d => allDates.add(d.date));
+const labels = [...allDates].sort();
+
+function mapScores(hist) {
+    const m = {};
+    hist.forEach(d => { m[d.date] = d.score; });
+    return labels.map(l => m[l] !== undefined ? m[l] : null);
+}
+
+const datasets = [];
+if (s2Hist.length > 0) {
+    datasets.push({
+        label: 'Stage 2',
+        data: mapScores(s2Hist),
+        borderColor: '#3fb950',
+        backgroundColor: 'rgba(63,185,80,0.05)',
+        borderWidth: 2, pointRadius: 2, tension: 0.3, fill: false, spanGaps: true,
+    });
+}
+if (vcpHist.length > 0) {
+    datasets.push({
+        label: 'VCP',
+        data: mapScores(vcpHist),
+        borderColor: '#58a6ff',
+        backgroundColor: 'rgba(88,166,255,0.05)',
+        borderWidth: 2, pointRadius: 2, tension: 0.3, fill: false, spanGaps: true,
+    });
+}
+if (bfHist.length > 0) {
+    datasets.push({
+        label: 'Bottom Fisher',
+        data: mapScores(bfHist),
+        borderColor: '#db6d28',
+        backgroundColor: 'rgba(219,109,40,0.05)',
+        borderWidth: 2, pointRadius: 2, tension: 0.3, fill: false, spanGaps: true,
+    });
+}
+
+if (datasets.length > 0 && labels.length > 0) {
+    const ctx = document.getElementById('scoreChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels.map(l => l.slice(5)),
+            datasets: datasets,
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: '#8b949e', font: { size: 11 } }
+                }
+            },
+            scales: {
+                y: {
+                    min: 0, max: 100,
+                    grid: { color: 'rgba(48,54,61,0.5)' },
+                    ticks: { color: '#8b949e', font: { size: 11 } }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45 }
+                }
+            }
+        }
+    });
+} else {
+    document.getElementById('scoreChart').parentElement.innerHTML = '<div class="empty-state">暂无历史数据</div>';
+}
+</script>
+{% endblock %}

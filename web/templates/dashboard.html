@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Stock Tracker{% endblock %}
+
+{% block content %}
+
+{# ============================================================ #}
+{# Market Pulse Hero                                             #}
+{# ============================================================ #}
+{% if pulse %}
+<div class="pulse-hero {{ pulse.regime }}">
+    <div class="pulse-main">
+        <span class="pulse-emoji">{{ pulse.regime | regime_emoji }}</span>
+        <div class="pulse-info">
+            <h2>{{ pulse.regime | upper }} — {{ pulse.regime | regime_label }}</h2>
+            <div class="pulse-meta">
+                <span>综合评分: <strong class="text-mono">{{ pulse.composite_score | fmt_score }}</strong>/100</span>
+                {% if pulse.spy_price %}<span>SPY {{ pulse.spy_price | fmt_price }}</span>{% endif %}
+                {% if pulse.vix_value %}<span>VIX <strong class="text-mono">{{ "%.1f" | format(pulse.vix_value) }}</strong></span>{% endif %}
+                <span>{{ pulse.date }}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="pulse-scores">
+        {% for key, val in pulse.component_scores.items() %}
+        <div class="pulse-score-item">
+            <div class="label">{{ key }}</div>
+            <div class="value {{ val | score_color }}">{{ val | fmt_score }}</div>
+            <div class="score-bar">
+                <div class="score-bar-fill {% if val >= 70 %}green{% elif val >= 50 %}yellow{% elif val >= 35 %}orange{% else %}red{% endif %}"
+                     style="width: {{ val }}%"></div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="empty-state">暂无 Market Pulse 数据。请先运行 <code>python scripts/market_pulse.py</code></div>
+</div>
+{% endif %}
+
+{# ============================================================ #}
+{# 三策略信号摘要                                                #}
+{# ============================================================ #}
+<div class="strategy-grid">
+    {# Stage 2 #}
+    <div class="strategy-card">
+        <div class="strategy-card-header">
+            <h3>🟢 Stage 2 趋势确认</h3>
+            <span class="strategy-count">{{ stage2_signals | length }}/{{ stage2_total }}</span>
+        </div>
+        {% if stage2_signals %}
+        <ul class="signal-list">
+            {% for s in stage2_signals[:8] %}
+            <li class="signal-item">
+                <a href="/ticker/{{ s.symbol }}" class="ticker-link">{{ s.symbol }}</a>
+                <span class="name">{{ s.metrics.name if s.metrics and s.metrics.name else s.symbol }}</span>
+                <span class="score {{ s.score | score_color }}">{{ s.score | fmt_score }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% if stage2_signals | length > 8 %}
+        <div style="text-align:center; padding-top:8px;">
+            <a href="/watchlist?signal_only=true" style="font-size:12px;">查看全部 →</a>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">暂无 Stage 2 信号</div>
+        {% endif %}
+    </div>
+
+    {# VCP #}
+    <div class="strategy-card">
+        <div class="strategy-card-header">
+            <h3>🎯 VCP 右侧突破</h3>
+            <span class="strategy-count">{{ vcp_signals | length }}/{{ vcp_total }}</span>
+        </div>
+        {% if vcp_signals %}
+        <ul class="signal-list">
+            {% for s in vcp_signals[:8] %}
+            <li class="signal-item">
+                <a href="/ticker/{{ s.symbol }}" class="ticker-link">{{ s.symbol }}</a>
+                <span class="name">{{ s.metrics.name if s.metrics and s.metrics.name else s.symbol }}</span>
+                <span class="score {{ s.score | score_color }}">{{ s.score | fmt_score }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state">暂无 VCP 信号</div>
+        {% endif %}
+    </div>
+
+    {# Bottom Fisher #}
+    <div class="strategy-card">
+        <div class="strategy-card-header">
+            <h3>🔻 Bottom Fisher 抄底</h3>
+            <span class="strategy-count">{{ bf_signals | length }}/{{ bf_total }}</span>
+        </div>
+        {% if bf_signals %}
+        <ul class="signal-list">
+            {% for s in bf_signals[:8] %}
+            <li class="signal-item">
+                <a href="/ticker/{{ s.symbol }}" class="ticker-link">{{ s.symbol }}</a>
+                <span class="name">{{ s.metrics.name if s.metrics and s.metrics.name else s.symbol }}</span>
+                <span class="score {{ s.score | score_color }}">{{ s.score | fmt_score }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state">暂无抄底信号</div>
+        {% endif %}
+    </div>
+</div>
+
+{# ============================================================ #}
+{# 近期信号变化 + Market Pulse 走势 并排                         #}
+{# ============================================================ #}
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+    {# Signal Changes #}
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">🔔 近期信号变化</span>
+        </div>
+        {% if signal_changes %}
+        <ul class="timeline">
+            {% for c in signal_changes[:12] %}
+            {% set info = c.change_type | change_type_info %}
+            <li class="timeline-item">
+                <span class="timeline-date">{{ c.date[5:] }}</span>
+                <span class="timeline-emoji">{{ info[0] }}</span>
+                <div class="timeline-content">
+                    <a href="/ticker/{{ c.symbol }}" class="ticker">{{ c.symbol }}</a>
+                    <span>{{ info[1] }}</span>
+                    <span class="text-secondary">({{ c.strategy | strategy_label }})</span>
+                    <div class="detail">
+                        {% if c.score %}Score: {{ c.score | fmt_score }}{% endif %}
+                        {% if c.price %} · {{ c.price | fmt_price }}{% endif %}
+                    </div>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <div class="empty-state">暂无信号变化</div>
+        {% endif %}
+    </div>
+
+    {# Market Pulse 历史走势图 #}
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title">📈 Market Pulse 走势 (30天)</span>
+        </div>
+        <div class="chart-container">
+            <canvas id="pulseChart"></canvas>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Market Pulse 30天走势图
+const pulseData = {{ pulse_history | tojson }};
+if (pulseData && pulseData.length > 0) {
+    const ctx = document.getElementById('pulseChart').getContext('2d');
+    const labels = pulseData.map(d => d.date.slice(5));  // MM-DD
+    const scores = pulseData.map(d => d.composite_score);
+
+    // 根据分数给每个点上色
+    const pointColors = scores.map(s => {
+        if (s >= 70) return '#3fb950';
+        if (s >= 50) return '#d29922';
+        if (s >= 35) return '#db6d28';
+        return '#f85149';
+    });
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Composite Score',
+                data: scores,
+                borderColor: '#58a6ff',
+                backgroundColor: 'rgba(88,166,255,0.1)',
+                borderWidth: 2,
+                pointBackgroundColor: pointColors,
+                pointBorderColor: pointColors,
+                pointRadius: 3,
+                fill: true,
+                tension: 0.3,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        afterLabel: function(ctx) {
+                            const d = pulseData[ctx.dataIndex];
+                            return d.regime.toUpperCase();
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    min: 0, max: 100,
+                    grid: { color: 'rgba(48,54,61,0.5)' },
+                    ticks: { color: '#8b949e', font: { size: 11 } }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 45 }
+                }
+            }
+        }
+    });
+}
+</script>
+{% endblock %}
