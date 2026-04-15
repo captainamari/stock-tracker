@@ -100,29 +100,29 @@ sudo apt install -y git python3 python3-pip python3-venv nginx certbot python3-c
 
 ```bash
 # 创建项目目录
-sudo mkdir -p /opt/stock-tracker
-sudo chown $USER:$USER /opt/stock-tracker
+sudo mkdir -p /home/opc/stock-tracker
+sudo chown $USER:$USER /home/opc/stock-tracker
 
 # 克隆代码（替换为你的实际仓库地址）
-git clone https://github.com/<你的用户名>/stock-tracker.git /opt/stock-tracker
+git clone https://github.com/<你的用户名>/stock-tracker.git /home/opc/stock-tracker
 
 # 进入项目目录
-cd /opt/stock-tracker
+cd /home/opc/stock-tracker
 ```
 
 > **💡 如果是私有仓库**，需要先配置 SSH Key 或使用 Personal Access Token：
 > ```bash
 > # SSH 方式
-> git clone git@github.com:<你的用户名>/stock-tracker.git /opt/stock-tracker
+> git clone git@github.com:<你的用户名>/stock-tracker.git /home/opc/stock-tracker
 > 
 > # Token 方式
-> git clone https://<TOKEN>@github.com/<你的用户名>/stock-tracker.git /opt/stock-tracker
+> git clone https://<TOKEN>@github.com/<你的用户名>/stock-tracker.git /home/opc/stock-tracker
 > ```
 
 ### Step 3: Python 环境
 
 ```bash
-cd /opt/stock-tracker
+cd /home/opc/stock-tracker
 
 # 创建虚拟环境
 python3 -m venv venv
@@ -139,8 +139,8 @@ pip install -r requirements.txt
 
 ```bash
 # 确保虚拟环境已激活
-source /opt/stock-tracker/venv/bin/activate
-cd /opt/stock-tracker
+source /home/opc/stock-tracker/venv/bin/activate
+cd /home/opc/stock-tracker
 
 # 初始化数据库 Schema
 python -m lib.db init
@@ -164,7 +164,7 @@ python scripts/bottom_fisher.py
 > **可选方案**：你也可以从 Windows 手动上传 `data/stock_tracker.db` 到服务器：
 > ```bash
 > # 在 Windows 本地执行（用 scp 上传数据库）
-> scp -i <私钥> D:\eh\projects\stock-tracker\data\stock_tracker.db ubuntu@<公网IP>:/opt/stock-tracker/data/
+> scp -i <私钥> D:\eh\projects\stock-tracker\data\stock_tracker.db ubuntu@<公网IP>:/home/opc/stock-tracker/data/
 > ```
 
 ### Step 5: 测试启动
@@ -172,7 +172,7 @@ python scripts/bottom_fisher.py
 先手动测试确认能正常运行：
 
 ```bash
-cd /opt/stock-tracker
+cd /home/opc/stock-tracker
 source venv/bin/activate
 
 # 测试启动（监听 0.0.0.0 以便外部访问）
@@ -200,9 +200,9 @@ After=network.target
 Type=simple
 User=ubuntu
 Group=ubuntu
-WorkingDirectory=/opt/stock-tracker
-Environment="PATH=/opt/stock-tracker/venv/bin:/usr/bin"
-ExecStart=/opt/stock-tracker/venv/bin/uvicorn web.app:app --host 127.0.0.1 --port 8000 --workers 2
+WorkingDirectory=/home/opc/stock-tracker
+Environment="PATH=/home/opc/stock-tracker/venv/bin:/usr/bin"
+ExecStart=/home/opc/stock-tracker/venv/bin/uvicorn web.app:app --host 127.0.0.1 --port 8000 --workers 2
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -254,7 +254,7 @@ server {
 
     # 静态文件直接由 Nginx 服务（更高效）
     location /static/ {
-        alias /opt/stock-tracker/web/static/;
+        alias /home/opc/stock-tracker/web/static/;
         expires 7d;
         add_header Cache-Control "public, immutable";
     }
@@ -393,13 +393,13 @@ sudo netfilter-persistent save
 
 ```bash
 # 创建数据更新脚本
-sudo tee /opt/stock-tracker/scripts/daily_update.sh << 'SCRIPT'
+sudo tee /home/opc/stock-tracker/scripts/daily_update.sh << 'SCRIPT'
 #!/bin/bash
 # Stock Tracker 每日数据更新脚本
 # 建议在美股收盘后运行（美东时间 16:30 之后）
 
 set -e
-cd /opt/stock-tracker
+cd /home/opc/stock-tracker
 source venv/bin/activate
 
 LOG_FILE="logs/daily_update_$(date +%Y%m%d).log"
@@ -431,11 +431,11 @@ echo "更新完成: $(date)" >> "$LOG_FILE"
 echo "========================================" >> "$LOG_FILE"
 
 # 清理 30 天前的日志
-find /opt/stock-tracker/logs -name "daily_update_*.log" -mtime +30 -delete
+find /home/opc/stock-tracker/logs -name "daily_update_*.log" -mtime +30 -delete
 SCRIPT
 
 # 赋予执行权限
-chmod +x /opt/stock-tracker/scripts/daily_update.sh
+chmod +x /home/opc/stock-tracker/scripts/daily_update.sh
 ```
 
 添加 Cron 定时任务：
@@ -446,7 +446,7 @@ crontab -e
 
 # 添加以下行（每天 UTC 05:00 = 美东时间 01:00 = 北京时间 13:00 执行）
 # 你可以根据需要调整时间
-0 5 * * 1-5 /opt/stock-tracker/scripts/daily_update.sh
+0 5 * * 1-5 /home/opc/stock-tracker/scripts/daily_update.sh
 
 # 说明：
 # 0 5    = UTC 时间 05:00
@@ -459,7 +459,7 @@ crontab -e
 > - 建议至少等收盘后 30 分钟再拉取数据
 > - 如果你在北京时间，美股收盘大约是 北京时间 04:00-05:00
 > - 所以设置 cron 在 UTC 21:30 (约北京时间 05:30) 比较合适：
->   `30 21 * * 1-5 /opt/stock-tracker/scripts/daily_update.sh`
+>   `30 21 * * 1-5 /home/opc/stock-tracker/scripts/daily_update.sh`
 
 ---
 
@@ -503,10 +503,10 @@ ssh -i <你的私钥路径> opc@<你的公网IP>
 #### 2. 拉取代码
 
 ```bash
-sudo mkdir -p /opt/stock-tracker
-sudo chown $USER:$USER /opt/stock-tracker
-git clone https://github.com/<你的用户名>/stock-tracker.git /opt/stock-tracker
-cd /opt/stock-tracker
+sudo mkdir -p /home/opc/stock-tracker
+sudo chown $USER:$USER /home/opc/stock-tracker
+git clone https://github.com/<你的用户名>/stock-tracker.git /home/opc/stock-tracker
+cd /home/opc/stock-tracker
 ```
 
 #### 3. 修改部署配置
@@ -580,7 +580,7 @@ newgrp docker
 #### 2. 拉取代码 & 构建镜像
 
 ```bash
-cd /opt/stock-tracker
+cd /home/opc/stock-tracker
 
 # 构建镜像
 docker compose build
@@ -638,7 +638,7 @@ docker compose cp /tmp/stock_tracker.db web:/app/data/stock_tracker.db
 ### Docker 日常运维
 
 ```bash
-cd /opt/stock-tracker
+cd /home/opc/stock-tracker
 
 # ---------- 容器管理 ----------
 docker compose up -d              # 启动
@@ -681,7 +681,7 @@ bash scripts/deploy_docker.sh --status
 当你在本地修改代码并推送后，在服务器上更新：
 
 ```bash
-cd /opt/stock-tracker
+cd /home/opc/stock-tracker
 
 # 拉取最新代码
 git pull origin main
@@ -701,7 +701,7 @@ sudo systemctl restart stock-tracker
 journalctl -u stock-tracker -f
 
 # 数据更新日志
-cat /opt/stock-tracker/logs/daily_update_$(date +%Y%m%d).log
+cat /home/opc/stock-tracker/logs/daily_update_$(date +%Y%m%d).log
 
 # Nginx 访问日志
 sudo tail -f /var/log/nginx/access.log
@@ -713,7 +713,7 @@ sudo tail -f /var/log/nginx/error.log
 ### 手动触发数据更新
 
 ```bash
-cd /opt/stock-tracker
+cd /home/opc/stock-tracker
 source venv/bin/activate
 bash scripts/daily_update.sh
 ```
@@ -722,12 +722,12 @@ bash scripts/daily_update.sh
 
 ```bash
 # 手动备份
-cp /opt/stock-tracker/data/stock_tracker.db /opt/stock-tracker/data/stock_tracker_backup_$(date +%Y%m%d).db
+cp /home/opc/stock-tracker/data/stock_tracker.db /home/opc/stock-tracker/data/stock_tracker_backup_$(date +%Y%m%d).db
 
 # 设置自动备份（每周日凌晨备份，保留4周）
 crontab -e
 # 添加：
-0 4 * * 0 cp /opt/stock-tracker/data/stock_tracker.db /opt/stock-tracker/data/backup_$(date +\%Y\%m\%d).db && find /opt/stock-tracker/data -name "backup_*.db" -mtime +28 -delete
+0 4 * * 0 cp /home/opc/stock-tracker/data/stock_tracker.db /home/opc/stock-tracker/data/backup_$(date +\%Y\%m\%d).db && find /home/opc/stock-tracker/data -name "backup_*.db" -mtime +28 -delete
 ```
 
 ---
@@ -744,7 +744,7 @@ sudo systemctl status stock-tracker
 journalctl -u stock-tracker --no-pager -n 50
 
 # 手动测试启动（看完整报错）
-cd /opt/stock-tracker
+cd /home/opc/stock-tracker
 source venv/bin/activate
 uvicorn web.app:app --host 127.0.0.1 --port 8000
 ```
@@ -776,7 +776,7 @@ sudo iptables -L INPUT -n --line-numbers | grep -E '80|443'
 #### 3. 数据库为空 / 页面没数据
 
 ```bash
-cd /opt/stock-tracker
+cd /home/opc/stock-tracker
 source venv/bin/activate
 
 # 检查数据库状态
@@ -810,7 +810,7 @@ sudo certbot renew
 # Oracle Cloud 日本区/韩国区 IP 可能被 Yahoo Finance 限流
 # 可以尝试加代理或减少请求频率
 # 查看拉取日志
-cat /opt/stock-tracker/logs/daily_update_$(date +%Y%m%d).log | tail -50
+cat /home/opc/stock-tracker/logs/daily_update_$(date +%Y%m%d).log | tail -50
 ```
 
 ---
@@ -818,14 +818,14 @@ cat /opt/stock-tracker/logs/daily_update_$(date +%Y%m%d).log | tail -50
 ## 快速参考卡片
 
 ```
-📍 项目路径:    /opt/stock-tracker
-📍 虚拟环境:    /opt/stock-tracker/venv
-📍 数据库:      /opt/stock-tracker/data/stock_tracker.db
+📍 项目路径:    /home/opc/stock-tracker
+📍 虚拟环境:    /home/opc/stock-tracker/venv
+📍 数据库:      /home/opc/stock-tracker/data/stock_tracker.db
 📍 Web 服务:    systemctl {start|stop|restart|status} stock-tracker
 📍 Nginx:       systemctl {start|stop|restart} nginx
 📍 Nginx 配置:  /etc/nginx/sites-available/stock-tracker
 📍 服务配置:    /etc/systemd/system/stock-tracker.service
-📍 更新脚本:    /opt/stock-tracker/scripts/daily_update.sh
+📍 更新脚本:    /home/opc/stock-tracker/scripts/daily_update.sh
 📍 日志:        journalctl -u stock-tracker -f
-📍 数据更新日志: /opt/stock-tracker/logs/daily_update_YYYYMMDD.log
+📍 数据更新日志: /home/opc/stock-tracker/logs/daily_update_YYYYMMDD.log
 ```

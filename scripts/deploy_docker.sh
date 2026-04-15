@@ -22,7 +22,7 @@ set -euo pipefail
 
 # ======================== 配置区 ========================
 # ⚠️ 部署前请修改以下变量
-PROJECT_DIR="/opt/stock-tracker"
+PROJECT_DIR="/home/opc/stock-tracker"
 DOMAIN=""                        # 你的域名，例如 stocks.example.com（留空则跳过 Nginx/SSL）
 EMAIL=""                         # 用于 Let's Encrypt 证书申请的邮箱
 GIT_REPO=""                      # Git 仓库地址，例如 https://github.com/user/stock-tracker.git
@@ -289,7 +289,7 @@ setup_cron() {
 # Docker 版每日数据更新脚本 (在宿主机通过 cron 调用)
 set -euo pipefail
 
-PROJECT_DIR="/opt/stock-tracker"
+PROJECT_DIR="/home/opc/stock-tracker"
 cd "$PROJECT_DIR"
 
 LOG_FILE="logs/daily_update_$(date +%Y%m%d).log"
