@@ -257,6 +257,160 @@ async function removeTicker(symbol, name) {
 }
 
 // ============================================================
+// 刷新价格 (SSE 流式)
+// ============================================================
+let _refreshInProgress = false;
+
+async function refreshPrices() {
+    if (_refreshInProgress) return;
+    _refreshInProgress = true;
+
+    const btn = document.getElementById('btnRefreshPrices');
+    const panel = document.getElementById('refreshPanel');
+    const title = document.getElementById('refreshTitle');
+    const status = document.getElementById('refreshStatus');
+    const log = document.getElementById('refreshLog');
+    const fill = document.getElementById('refreshProgressFill');
+    const closeBtn = document.getElementById('refreshCloseBtn');
+
+    // 重置 UI
+    btn.disabled = true;
+    btn.classList.add('refreshing');
+    btn.textContent = '🔄 更新中…';
+    panel.style.display = 'block';
+    title.textContent = '🔄 正在更新价格...';
+    status.textContent = '准备中...';
+    log.innerHTML = '';
+    fill.style.width = '0%';
+    fill.className = 'refresh-progress-fill';
+    closeBtn.style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/prices/refresh', { method: 'POST' });
+
+        if (!resp.ok) {
+            throw new Error(`服务器错误: ${resp.status}`);
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            // 解析 SSE 事件
+            const lines = buffer.split('\n');
+            buffer = '';
+
+            let eventType = 'progress';
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+
+                if (line.startsWith('event: ')) {
+                    eventType = line.slice(7).trim();
+                } else if (line.startsWith('data: ')) {
+                    try {
+                        const data = JSON.parse(line.slice(6));
+                        handleRefreshEvent(eventType, data, { status, log, fill, title });
+                    } catch (e) {
+                        // JSON 不完整，放回 buffer
+                        buffer = lines.slice(i).join('\n');
+                        break;
+                    }
+                    eventType = 'progress'; // reset
+                } else if (line === '') {
+                    // 空行 = 事件分隔符
+                } else {
+                    // 可能是不完整的行
+                    buffer = lines.slice(i).join('\n');
+                    break;
+                }
+            }
+        }
+
+    } catch (err) {
+        status.textContent = `❌ 刷新失败: ${err.message}`;
+        fill.className = 'refresh-progress-fill has-errors';
+    } finally {
+        _refreshInProgress = false;
+        btn.disabled = false;
+        btn.classList.remove('refreshing');
+        btn.textContent = '🔄 更新价格';
+        closeBtn.style.display = 'block';
+    }
+}
+
+function handleRefreshEvent(eventType, data, ui) {
+    if (eventType === 'progress') {
+        const pct = Math.round((data.current / data.total) * 100);
+        ui.fill.style.width = pct + '%';
+        ui.status.textContent = `${data.current} / ${data.total} — ${data.symbol} (${data.name || ''})`;
+
+        // 添加日志行
+        const icon = data.status === 'updated' ? '✅' :
+                     data.status === 'skipped' ? '⏭️' : '❌';
+        const cls = data.status === 'updated' ? 'log-updated' :
+                    data.status === 'skipped' ? 'log-skipped' : 'log-error';
+        let detail = '';
+        if (data.status === 'updated') {
+            detail = `+${data.new_rows} 条`;
+            if (data.strategies_recalculated) detail += ' · 已重算策略';
+        } else if (data.status === 'error') {
+            detail = data.error || '未知错误';
+        } else {
+            detail = '已是最新';
+        }
+
+        const logItem = document.createElement('div');
+        logItem.className = `log-item ${cls}`;
+        logItem.textContent = `${icon} ${data.symbol} — ${detail}`;
+        ui.log.appendChild(logItem);
+        ui.log.scrollTop = ui.log.scrollHeight;
+
+    } else if (eventType === 'complete') {
+        ui.fill.style.width = '100%';
+        ui.fill.className = 'refresh-progress-fill ' + (data.errors > 0 ? 'has-errors' : 'done');
+        ui.status.textContent =
+            `✅ 完成: ${data.updated} 只已更新 / ${data.skipped} 只已跳过` +
+            (data.errors > 0 ? ` / ${data.errors} 只失败` : '') +
+            ` / ${data.strategies_recalculated} 只重算了策略`;
+
+        const titleEl = document.getElementById('refreshTitle');
+        titleEl.textContent = data.errors > 0 ? '⚠️ 价格更新完成 (部分失败)' : '✅ 价格更新完成';
+
+        // 如果有更新，提示刷新页面
+        if (data.updated > 0) {
+            const hint = document.createElement('div');
+            hint.style.cssText = 'margin-top:8px;font-size:13px;color:var(--blue);cursor:pointer;';
+            hint.textContent = '🔄 点击此处刷新页面查看最新数据';
+            hint.onclick = () => window.location.reload();
+            ui.log.appendChild(hint);
+        }
+
+    } else if (eventType === 'error') {
+        ui.fill.className = 'refresh-progress-fill has-errors';
+        ui.status.textContent = `❌ 错误: ${data.error}`;
+    }
+}
+
+function closeRefreshPanel() {
+    const panel = document.getElementById('refreshPanel');
+    if (panel) {
+        panel.style.transition = 'opacity 0.2s';
+        panel.style.opacity = '0';
+        setTimeout(() => {
+            panel.style.display = 'none';
+            panel.style.opacity = '1';
+            panel.style.transition = '';
+        }, 200);
+    }
+}
+
+// ============================================================
 // 页面加载完成后的初始化
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {

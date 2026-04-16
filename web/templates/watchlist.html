@@ -30,8 +30,24 @@
 
     <button type="submit" style="background:var(--blue);color:white;border:none;padding:8px 16px;border-radius:var(--radius);cursor:pointer;font-size:13px;">搜索</button>
 
+    <button type="button" class="btn-refresh-prices" id="btnRefreshPrices" onclick="refreshPrices()">🔄 更新价格</button>
     <button type="button" class="btn-add-ticker" onclick="openAddTickerModal()">➕ 添加 Ticker</button>
 </form>
+
+{# ============================================================ #}
+{# 价格刷新进度面板                                              #}
+{# ============================================================ #}
+<div id="refreshPanel" class="refresh-panel" style="display:none;">
+    <div class="refresh-panel-header">
+        <span id="refreshTitle">🔄 正在更新价格...</span>
+        <button class="refresh-panel-close" id="refreshCloseBtn" onclick="closeRefreshPanel()" style="display:none;">&times;</button>
+    </div>
+    <div class="refresh-progress-bar">
+        <div class="refresh-progress-fill" id="refreshProgressFill" style="width:0%"></div>
+    </div>
+    <div class="refresh-status" id="refreshStatus">准备中...</div>
+    <div class="refresh-log" id="refreshLog"></div>
+</div>
 
 {# ============================================================ #}
 {# 股票列表表格                                                  #}

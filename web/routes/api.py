@@ -3,8 +3,11 @@
 供前端 JS 动态获取数据（图表刷新等）
 """
 
+import json
+import asyncio
 import logging
 from fastapi import APIRouter, Query, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from lib import db
@@ -284,3 +287,55 @@ async def api_ticker_history(
     data = db.get_strategy_history(symbol.upper(), strategy, days=days)
     data.reverse()
     return data
+
+
+# ============================================================
+# 价格全量刷新 API (SSE)
+# ============================================================
+@router.post("/prices/refresh")
+async def api_refresh_prices():
+    """
+    全量刷新所有 enabled 个股的价格。
+    使用 Server-Sent Events (SSE) 推送逐 ticker 进度。
+
+    前端通过 fetch + ReadableStream 读取：
+      event: progress  → 单只 ticker 完成
+      event: complete  → 全部完成
+      event: error     → 出错
+    """
+    from lib.pipeline import refresh_all_prices
+
+    async def generate():
+        try:
+            loop = asyncio.get_event_loop()
+
+            # refresh_all_prices() 是同步生成器，逐个 yield
+            # 用 run_in_executor 包装以避免阻塞事件循环
+            gen = refresh_all_prices()
+
+            while True:
+                try:
+                    progress = await loop.run_in_executor(None, next, gen)
+                except StopIteration:
+                    break
+
+                event_type = progress.get('type', 'progress')
+                data = json.dumps(progress, ensure_ascii=False)
+                yield f"event: {event_type}\ndata: {data}\n\n"
+
+        except Exception as e:
+            logger.error(f"[API] 价格刷新异常: {e}")
+            error_data = json.dumps({
+                'type': 'error',
+                'error': str(e),
+            }, ensure_ascii=False)
+            yield f"event: error\ndata: {error_data}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # nginx 代理时禁用缓冲
+        },
+    )
