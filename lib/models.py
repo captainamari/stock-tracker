@@ -100,7 +100,7 @@ class StrategyResult:
     sector: str
     price: float
     date: str  # YYYY-MM-DD
-    strategy: str  # 'stage2' | 'vcp' | 'bottom_fisher'
+    strategy: str  # 'stage2' | 'vcp' | 'bottom_fisher' | 'buying_checklist'
     is_signal: bool = False
     score: float = 0
     passed: int = 0
@@ -313,6 +313,47 @@ class MarketPulseResult:
             'index_data': self.index_data,
             'breadth_data': self.breadth_data,
         }
+
+
+# ============================================================
+# Buying Checklist 结果
+# ============================================================
+@dataclass
+class BuyingChecklistResult(StrategyResult):
+    """Buying Checklist 分析结果 — 多维度买入检查"""
+    strategy: str = "buying_checklist"
+    bc_score: int = 0
+    weekly_impulse: str = ""       # 'green'|'red'|'blue'
+    weekly_trend: str = ""         # 'up'|'down'|'flat'
+    impulse_streak: int = 0
+    week52_high: float = 0
+    week52_low: float = 0
+    sma50: Optional[float] = None
+    sma200: Optional[float] = None
+    sma10: Optional[float] = None
+    chg_5d: Optional[float] = None
+    chg_20d: Optional[float] = None
+
+    def to_db_dict(self) -> Dict:
+        base = super().to_db_dict()
+        base['metrics'] = {
+            'name': self.name,
+            'sector': self.sector,
+            'price': self.price,
+            'bc_score': self.bc_score,
+            'weekly_impulse': self.weekly_impulse,
+            'weekly_trend': self.weekly_trend,
+            'impulse_streak': self.impulse_streak,
+            'week52_high': self.week52_high,
+            'week52_low': self.week52_low,
+            'sma50': self.sma50,
+            'sma200': self.sma200,
+            'sma10': self.sma10,
+            'chg_5d': self.chg_5d,
+            'chg_20d': self.chg_20d,
+            **self.metrics,
+        }
+        return base
 
 
 # ============================================================

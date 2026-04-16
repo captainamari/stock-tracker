@@ -27,6 +27,7 @@ def _build_dashboard_data() -> dict:
     stage2_signals = []
     vcp_signals = []
     bf_signals = []
+    bc_signals = []
 
     if latest_date:
         stage2_signals = db.get_strategy_results(
@@ -37,6 +38,28 @@ def _build_dashboard_data() -> dict:
         )
         bf_signals = db.get_strategy_results(
             "bottom_fisher", date_str=latest_date, signal_only=True, limit=50
+        )
+        bc_signals = db.get_strategy_results(
+            "buying_checklist", date_str=latest_date, signal_only=True, limit=50
+        )
+
+    # Fallback: 如果按 market_pulse 日期查不到策略结果（日期不一致时），
+    # 回退查询最新的信号结果
+    if latest_date and not stage2_signals:
+        stage2_signals = db.get_strategy_results(
+            "stage2", signal_only=True, limit=50
+        )
+    if latest_date and not vcp_signals:
+        vcp_signals = db.get_strategy_results(
+            "vcp", signal_only=True, limit=50
+        )
+    if latest_date and not bf_signals:
+        bf_signals = db.get_strategy_results(
+            "bottom_fisher", signal_only=True, limit=50
+        )
+    if latest_date and not bc_signals:
+        bc_signals = db.get_strategy_results(
+            "buying_checklist", signal_only=True, limit=50
         )
 
     # 5. 各策略总扫描数 (用于 "12/36 只")
@@ -49,6 +72,19 @@ def _build_dashboard_data() -> dict:
     bf_total = len(
         db.get_strategy_results("bottom_fisher", date_str=latest_date, limit=200)
     ) if latest_date else 0
+    bc_total = len(
+        db.get_strategy_results("buying_checklist", date_str=latest_date, limit=200)
+    ) if latest_date else 0
+
+    # Fallback: 总数也回退查询
+    if latest_date and stage2_total == 0:
+        stage2_total = len(db.get_strategy_results("stage2", limit=200))
+    if latest_date and vcp_total == 0:
+        vcp_total = len(db.get_strategy_results("vcp", limit=200))
+    if latest_date and bf_total == 0:
+        bf_total = len(db.get_strategy_results("bottom_fisher", limit=200))
+    if latest_date and bc_total == 0:
+        bc_total = len(db.get_strategy_results("buying_checklist", limit=200))
 
     # 6. 近期信号变化
     signal_changes = db.get_signal_changes(limit=20)
@@ -60,9 +96,11 @@ def _build_dashboard_data() -> dict:
         "stage2_signals": stage2_signals,
         "vcp_signals": vcp_signals,
         "bf_signals": bf_signals,
+        "bc_signals": bc_signals,
         "stage2_total": stage2_total,
         "vcp_total": vcp_total,
         "bf_total": bf_total,
+        "bc_total": bc_total,
         "signal_changes": signal_changes,
     }
 

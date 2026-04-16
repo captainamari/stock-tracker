@@ -65,6 +65,7 @@
                 <th data-sort="s2_score" class="col-center">Stage 2</th>
                 <th data-sort="vcp_score" class="col-center">VCP</th>
                 <th data-sort="bf_score" class="col-center">Bottom Fisher</th>
+                <th data-sort="bc_score" class="col-center">Buying Checklist</th>
                 <th class="col-center" style="width:50px;"></th>
             </tr>
         </thead>
@@ -78,7 +79,8 @@
                 data-chg_20d="{{ r.chg_20d or 0 }}"
                 data-s2_score="{{ r.s2_score or 0 }}"
                 data-vcp_score="{{ r.vcp_score or 0 }}"
-                data-bf_score="{{ r.bf_score or 0 }}">
+                data-bf_score="{{ r.bf_score or 0 }}"
+                data-bc_score="{{ r.bc_score or 0 }}">
 
                 <td class="col-ticker">
                     <a href="/ticker/{{ r.symbol }}">{{ r.symbol }}</a>
@@ -117,6 +119,17 @@
                     <span class="signal-badge bf-active">🔻 {{ r.bf_score | fmt_score }}</span>
                     {% elif r.bf_score is not none and r.bf_score > 0 %}
                     <span class="signal-badge inactive">{{ r.bf_score | fmt_score }}</span>
+                    {% else %}
+                    <span class="text-dim">—</span>
+                    {% endif %}
+                </td>
+
+                {# Buying Checklist #}
+                <td class="col-center">
+                    {% if r.bc_active %}
+                    <span class="signal-badge bc-active">📋 {{ r.bc_score | fmt_score }}</span>
+                    {% elif r.bc_score is not none and r.bc_score > 0 %}
+                    <span class="signal-badge inactive">{{ r.bc_score | fmt_score }}</span>
                     {% else %}
                     <span class="text-dim">—</span>
                     {% endif %}

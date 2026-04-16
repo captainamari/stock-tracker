@@ -27,7 +27,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from lib.db import init_db, upsert_prices, get_price_count
+from lib.db import init_db, upsert_prices, get_price_count, get_latest_price_date
 from lib.config import load_config, parse_tickers, sync_watchlist
 
 # 路径
@@ -215,7 +215,7 @@ def main():
     args = parse_args()
 
     log("=" * 50)
-    log("save_prices_yfinance.py v2.0 (yfinance + SQLite) 开始执行")
+    log("save_prices_yfinance.py v2.1 (yfinance + SQLite, 增量模式) 开始执行")
 
     # 初始化 DB & 同步 watchlist
     init_db()
@@ -243,13 +243,35 @@ def main():
 
     success = []
     failed = []
+    skipped = []
 
     for i, t in enumerate(tickers):
         symbol = t['symbol']
         yf_ticker = t['yf_ticker']
 
-        log(f"📥 {symbol} (yfinance: {yf_ticker})...")
-        rows = fetch_yfinance(yf_ticker, days=365)
+        # ── 增量检查：查看 DB 中最新价格日期 ──
+        last_date = get_latest_price_date(symbol)
+        if last_date:
+            from datetime import date as date_type
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            if last_date >= today_str:
+                log(f"  {symbol} 已是最新 ({last_date})，跳过")
+                skipped.append(symbol)
+                continue
+
+            # 增量拉取：只拉 last_date 之后的数据
+            log(f"📥 {symbol} (yfinance: {yf_ticker}) 增量更新 (从 {last_date} 起)...")
+            from_date = datetime.strptime(last_date, '%Y-%m-%d') + timedelta(days=1)
+            days_to_fetch = (datetime.now() - from_date).days + 2
+            rows = fetch_yfinance(yf_ticker, days=max(days_to_fetch, 7))
+
+            # 只保留 last_date 之后的行
+            if rows:
+                rows = [r for r in rows if r['Date'] > last_date]
+        else:
+            # 无历史数据，全量拉取
+            log(f"📥 {symbol} (yfinance: {yf_ticker}) 全量拉取...")
+            rows = fetch_yfinance(yf_ticker, days=365)
 
         if rows:
             try:
@@ -258,18 +280,23 @@ def main():
 
                 # 写入 CSV（备份）
                 if not args.no_csv:
+                    # 增量模式下追加到已有 CSV
                     save_csv(symbol, rows)
 
                 latest = rows[-1]
                 db_count = get_price_count(symbol)
-                log(f"  {symbol} 已保存 {len(rows)} 条 (DB总计 {db_count})，最新: {latest['Date']}, {latest['Close']}")
+                log(f"  {symbol} 已保存 {len(rows)} 条新数据 (DB总计 {db_count})，最新: {latest['Date']}, {latest['Close']}")
                 success.append(symbol)
             except Exception as e:
                 log(f"{symbol} 保存失败: {e}", "ERROR")
                 failed.append(symbol)
         else:
-            log(f"  {symbol} 数据获取失败", "ERROR")
-            failed.append(symbol)
+            if last_date:
+                log(f"  {symbol} 无新数据 (最新: {last_date})，跳过")
+                skipped.append(symbol)
+            else:
+                log(f"  {symbol} 数据获取失败", "ERROR")
+                failed.append(symbol)
 
         # 相邻请求间隔
         if i < len(tickers) - 1:
@@ -277,12 +304,57 @@ def main():
             time.sleep(delay)
 
     log("=" * 50)
-    log(f"完成: {len(success)} 只成功 {success}")
+    log(f"完成: {len(success)} 只更新, {len(skipped)} 只跳过, {len(failed)} 只失败")
     if failed:
         log(f"失败: {failed}", "ERROR")
-    log("=" * 50)
 
-    print(f"\n📦 yfinance 价格存档完成 | 成功 {len(success)}/{len(tickers)} | 失败: {failed if failed else '无'}")
+    # ── 价格更新后自动运行策略和 Market Pulse ──
+    if success:
+        log("=" * 50)
+        log("开始自动运行策略计算和 Market Pulse 更新...")
+
+        # 运行策略计算
+        try:
+            from lib.pipeline import _run_strategies_for_ticker
+            from lib.db import get_watchlist
+
+            watchlist = {t['symbol']: t for t in get_watchlist(enabled_only=True, source_type='monitored')}
+            strategies_ok = 0
+            strategies_fail = 0
+
+            for symbol in success:
+                # 只对 monitored 类型的 ticker 运行策略
+                ticker_info = watchlist.get(symbol)
+                if not ticker_info:
+                    continue
+                try:
+                    _run_strategies_for_ticker(
+                        symbol,
+                        ticker_info.get('name', symbol),
+                        ticker_info.get('sector', ''),
+                    )
+                    strategies_ok += 1
+                    log(f"  {symbol} 策略计算完成")
+                except Exception as e:
+                    strategies_fail += 1
+                    log(f"  {symbol} 策略计算失败: {e}", "WARNING")
+
+            log(f"策略计算完成: {strategies_ok} 成功, {strategies_fail} 失败")
+        except Exception as e:
+            log(f"策略计算整体失败: {e}", "ERROR")
+
+        # 运行 Market Pulse 更新
+        try:
+            from lib.pipeline import _update_market_pulse
+            if _update_market_pulse():
+                log("Market Pulse 已自动更新")
+            else:
+                log("Market Pulse 更新失败", "WARNING")
+        except Exception as e:
+            log(f"Market Pulse 更新失败: {e}", "ERROR")
+
+    log("=" * 50)
+    print(f"\n📦 yfinance 价格存档完成 | 更新 {len(success)}/{len(tickers)} | 跳过: {len(skipped)} | 失败: {failed if failed else '无'}")
 
     if failed:
         sys.exit(1)

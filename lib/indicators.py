@@ -14,6 +14,8 @@ Stock Tracker — 技术指标计算库
   - RSI 底背离检测
   - MACD 底背离检测
   - 锤子线/十字星检测
+  - Weekly Resample (日线→周线转换)
+  - Elder Impulse System (趋势+动量复合信号)
 """
 
 import pandas as pd
@@ -310,3 +312,115 @@ def normalize_tz(df: pd.DataFrame) -> pd.DataFrame:
         except Exception:
             pass
     return df
+
+
+# ============================================================
+# Weekly Resample (日线→周线)
+# ============================================================
+def weekly_resample(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    将日线 OHLCV DataFrame 重采样为周线。
+    输入须含 Open, High, Low, Close, Volume 列。
+    返回周线 DataFrame，索引为每周最后一个交易日。
+    """
+    weekly = data.resample('W').agg({
+        'Open': 'first',
+        'High': 'max',
+        'Low': 'min',
+        'Close': 'last',
+        'Volume': 'sum',
+    }).dropna()
+    return weekly
+
+
+# ============================================================
+# Elder Impulse System
+# ============================================================
+def elder_impulse(close: pd.Series, ema_period: int = 13,
+                  macd_fast: int = 12, macd_slow: int = 26,
+                  macd_signal: int = 9) -> Tuple[pd.Series, pd.Series, pd.Series]:
+    """
+    Elder Impulse System — 趋势 + 动量复合信号。
+
+    规则:
+      - EMA(13) 上升 AND MACD-Histogram 上升 → Green (多头)
+      - EMA(13) 下降 AND MACD-Histogram 下降 → Red (空头)
+      - 其他 → Blue (中性/犹豫)
+
+    参数:
+      close: 收盘价序列
+      ema_period: EMA 周期 (默认 13)
+      macd_fast/slow/signal: MACD 参数
+
+    返回:
+      (impulse_color, ema_series, macd_hist)
+      impulse_color: Series of 'green' | 'red' | 'blue'
+    """
+    ema_val = ema(close, ema_period)
+    _, _, hist = macd(close, macd_fast, macd_slow, macd_signal)
+
+    ema_rising = ema_val.diff() > 0
+    hist_rising = hist.diff() > 0
+
+    color = pd.Series('blue', index=close.index)
+    color[(ema_rising) & (hist_rising)] = 'green'
+    color[(~ema_rising) & (~hist_rising)] = 'red'
+
+    return color, ema_val, hist
+
+
+def elder_impulse_weekly(data: pd.DataFrame, ema_period: int = 13) -> dict:
+    """
+    对日线数据做周线 Elder Impulse 分析，返回汇总信息。
+
+    返回 dict:
+      weekly_impulse: 最新一周的 impulse 颜色 ('green'|'red'|'blue')
+      weekly_ema13: 周线 EMA13 值
+      weekly_macd_hist: 周线 MACD 柱状图值
+      weekly_trend: 'up'|'down'|'flat' (EMA13方向)
+      impulse_streak: 连续同色周数 (正=green, 负=red)
+    """
+    weekly = weekly_resample(data)
+    if len(weekly) < 30:
+        return {
+            'weekly_impulse': 'blue',
+            'weekly_ema13': None,
+            'weekly_macd_hist': None,
+            'weekly_trend': 'flat',
+            'impulse_streak': 0,
+        }
+
+    color, ema_val, hist = elder_impulse(weekly['Close'], ema_period)
+
+    latest_color = color.iloc[-1]
+    latest_ema = round(float(ema_val.iloc[-1]), 2) if not pd.isna(ema_val.iloc[-1]) else None
+    latest_hist = round(float(hist.iloc[-1]), 3) if not pd.isna(hist.iloc[-1]) else None
+
+    # EMA 方向
+    if len(ema_val) >= 2 and not pd.isna(ema_val.iloc[-2]):
+        if ema_val.iloc[-1] > ema_val.iloc[-2]:
+            trend = 'up'
+        elif ema_val.iloc[-1] < ema_val.iloc[-2]:
+            trend = 'down'
+        else:
+            trend = 'flat'
+    else:
+        trend = 'flat'
+
+    # 连续同色 streak
+    streak = 0
+    for c in reversed(color.values):
+        if c == latest_color:
+            streak += 1
+        else:
+            break
+    if latest_color == 'red':
+        streak = -streak
+
+    return {
+        'weekly_impulse': latest_color,
+        'weekly_ema13': latest_ema,
+        'weekly_macd_hist': latest_hist,
+        'weekly_trend': trend,
+        'impulse_streak': streak,
+    }

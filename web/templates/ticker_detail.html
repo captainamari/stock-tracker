@@ -140,12 +140,51 @@
         <div class="empty-state">无抄底数据</div>
         {% endif %}
     </div>
+
+    {# Buying Checklist 卡片 #}
+    <div class="detail-card {% if bc_state and bc_state.is_active %}active{% else %}inactive{% endif %}">
+        <div class="detail-card-header">
+            <h3>📋 Buying Checklist</h3>
+            {% if bc_state and bc_state.is_active %}
+            <span class="detail-card-status on">活跃</span>
+            {% else %}
+            <span class="detail-card-status off">非活跃</span>
+            {% endif %}
+        </div>
+        {% if bc_result %}
+        <div class="stat-row">
+            <span class="stat-label">Score</span>
+            <span class="stat-value {{ bc_result.score | score_color }}">{{ bc_result.score | fmt_score }}/100</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">条件</span>
+            <span class="stat-value">{{ bc_result.passed }}/{{ bc_result.total }}</span>
+        </div>
+        {% if bc_result.metrics and bc_result.metrics.weekly_impulse %}
+        <div class="stat-row">
+            <span class="stat-label">周线 Impulse</span>
+            <span class="stat-value">
+                {% if bc_result.metrics.weekly_impulse == 'green' %}🟢{% elif bc_result.metrics.weekly_impulse == 'red' %}🔴{% else %}🔵{% endif %}
+                {{ bc_result.metrics.weekly_impulse }}
+            </span>
+        </div>
+        {% endif %}
+        {% if bc_result.metrics and bc_result.metrics.impulse_streak %}
+        <div class="stat-row">
+            <span class="stat-label">连续周数</span>
+            <span class="stat-value">{{ bc_result.metrics.impulse_streak }}</span>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">无买入检查数据</div>
+        {% endif %}
+    </div>
 </div>
 
 {# ============================================================ #}
 {# 条件明细 (活跃策略展开)                                       #}
 {# ============================================================ #}
-{% set active_result = s2_result if (s2_state and s2_state.is_active and s2_result) else (vcp_result if (vcp_state and vcp_state.is_active and vcp_result) else (bf_result if (bf_state and bf_state.is_active and bf_result) else s2_result)) %}
+{% set active_result = s2_result if (s2_state and s2_state.is_active and s2_result) else (vcp_result if (vcp_state and vcp_state.is_active and vcp_result) else (bc_result if (bc_state and bc_state.is_active and bc_result) else (bf_result if (bf_state and bf_state.is_active and bf_result) else s2_result))) %}
 
 {% if active_result and active_result.conditions %}
 <div class="card">
@@ -263,12 +302,14 @@
 const s2Hist = {{ s2_history | tojson }};
 const vcpHist = {{ vcp_history | tojson }};
 const bfHist = {{ bf_history | tojson }};
+const bcHist = {{ bc_history | tojson }};
 
 // 合并所有日期
 const allDates = new Set();
 s2Hist.forEach(d => allDates.add(d.date));
 vcpHist.forEach(d => allDates.add(d.date));
 bfHist.forEach(d => allDates.add(d.date));
+bcHist.forEach(d => allDates.add(d.date));
 const labels = [...allDates].sort();
 
 function mapScores(hist) {
@@ -302,6 +343,15 @@ if (bfHist.length > 0) {
         data: mapScores(bfHist),
         borderColor: '#db6d28',
         backgroundColor: 'rgba(219,109,40,0.05)',
+        borderWidth: 2, pointRadius: 2, tension: 0.3, fill: false, spanGaps: true,
+    });
+}
+if (bcHist.length > 0) {
+    datasets.push({
+        label: 'Buying Checklist',
+        data: mapScores(bcHist),
+        borderColor: '#bc8cff',
+        backgroundColor: 'rgba(188,140,255,0.05)',
         borderWidth: 2, pointRadius: 2, tension: 0.3, fill: false, spanGaps: true,
     });
 }

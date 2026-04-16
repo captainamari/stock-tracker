@@ -461,6 +461,10 @@ a:hover {
     background: var(--orange-bg);
     color: var(--orange);
 }
+.signal-badge.bc-active {
+    background: rgba(188, 140, 255, 0.1);
+    color: var(--purple);
+}
 .signal-badge.inactive {
     color: var(--text-dim);
 }

@@ -181,6 +181,7 @@ def run_single_ticker_pipeline(symbol: str, name: str, sector: str) -> dict:
         'stage2': None,
         'vcp': None,
         'bottom_fisher': None,
+        'buying_checklist': None,
         'error': None,
     }
 
@@ -442,6 +443,73 @@ def run_single_ticker_pipeline(symbol: str, name: str, sector: str) -> dict:
     except Exception as e:
         logger.warning(f"[Pipeline] {symbol}: Bottom Fisher 分析失败: {e}")
 
+    # ── Step 5: 运行 Buying Checklist ──
+    try:
+        from scripts.buying_checklist import analyze_buying_checklist
+
+        data = get_prices_as_dataframe(symbol, min_rows=200)
+
+        if data is not None:
+            stage2_states_list = get_strategy_states('stage2')
+            stage2_states = {s['symbol']: s for s in stage2_states_list}
+            bf_states_list = get_strategy_states('bottom_fisher')
+            bf_states = {s['symbol']: s for s in bf_states_list}
+
+            ticker_info = TickerInfo(symbol=symbol, name=name, sector=sector)
+            bc_result = analyze_buying_checklist(symbol, ticker_info, data, stage2_states, bf_states)
+
+            if bc_result:
+                save_strategy_result(
+                    symbol=symbol,
+                    date_str=date_str,
+                    strategy='buying_checklist',
+                    is_signal=bc_result['is_bc_signal'],
+                    score=bc_result['bc_score'],
+                    passed=bc_result['passed'],
+                    total=bc_result['total'],
+                    conditions=bc_result['conditions'],
+                    condition_details=bc_result.get('condition_details', {}),
+                    metrics={
+                        'name': name, 'sector': sector,
+                        'price': bc_result['price'],
+                        'bc_score': bc_result['bc_score'],
+                        'weekly_impulse': bc_result['weekly_impulse'],
+                        'weekly_trend': bc_result['weekly_trend'],
+                        'impulse_streak': bc_result['impulse_streak'],
+                        'week52_high': bc_result['week52_high'],
+                        'week52_low': bc_result['week52_low'],
+                        'sma50': bc_result.get('sma50'),
+                        'sma200': bc_result.get('sma200'),
+                        'sma10': bc_result.get('sma10'),
+                        'chg_5d': bc_result.get('chg_5d'),
+                        'chg_20d': bc_result.get('chg_20d'),
+                    },
+                    summary=f"{'BC' if bc_result['is_bc_signal'] else '--'} {symbol} "
+                            f"{bc_result['passed']}/{bc_result['total']} "
+                            f"Score:{bc_result['bc_score']}",
+                )
+
+                upsert_strategy_state(
+                    symbol=symbol,
+                    strategy='buying_checklist',
+                    is_active=bc_result['is_bc_signal'],
+                    entry_date=date_str if bc_result['is_bc_signal'] else None,
+                    entry_price=bc_result['price'] if bc_result['is_bc_signal'] else None,
+                    extra={'bc_score': bc_result['bc_score']},
+                )
+
+                pipeline_result['buying_checklist'] = {
+                    'is_signal': bc_result['is_bc_signal'],
+                    'score': bc_result['bc_score'],
+                    'passed': bc_result['passed'],
+                    'total': bc_result['total'],
+                }
+                logger.info(f"[Pipeline] {symbol}: BuyingChecklist {'✅' if bc_result['is_bc_signal'] else '❌'} "
+                            f"(Score:{bc_result['bc_score']})")
+
+    except Exception as e:
+        logger.warning(f"[Pipeline] {symbol}: Buying Checklist 分析失败: {e}")
+
     pipeline_result['success'] = True
     logger.info(f"[Pipeline] {symbol}: 管道执行完成")
     return pipeline_result
@@ -506,6 +574,84 @@ def _fetch_incremental_prices(symbol: str, last_date: str) -> list:
     return rows
 
 
+def _update_market_pulse() -> bool:
+    """
+    运行 Market Pulse 分析并将结果写入 DB。
+    在 refresh_all_prices 完成后自动调用，确保 market_pulse 表
+    的日期与策略结果日期一致。
+
+    返回: True 如果成功更新，False 如果失败或跳过。
+    """
+    import sys
+    PROJECT_ROOT = Path(__file__).parent.parent
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+
+    from lib.db import (
+        get_prices_as_dataframe, save_market_pulse,
+        get_latest_market_pulse, get_strategy_states,
+    )
+    from lib.config import get_monitored_tickers
+
+    try:
+        from scripts.market_pulse import (
+            analyze_index, analyze_vix, analyze_breadth,
+            calculate_composite_score, determine_regime,
+        )
+    except ImportError as e:
+        logger.warning(f"[MarketPulse] 无法导入 market_pulse 模块: {e}")
+        return False
+
+    try:
+        # 加载 Stage 2 状态
+        stage2_states_list = get_strategy_states('stage2')
+        stage2_states = {s['symbol']: s for s in stage2_states_list}
+
+        # 加载指数数据
+        spy_data = get_prices_as_dataframe('SPY', min_rows=50)
+        qqq_data = get_prices_as_dataframe('QQQ', min_rows=20)
+        iwm_data = get_prices_as_dataframe('IWM', min_rows=20)
+        vix_data = get_prices_as_dataframe('VIX', min_rows=10)
+
+        # 分析
+        spy_result = analyze_index('SPY', spy_data)
+        qqq_result = analyze_index('QQQ', qqq_data)
+        iwm_result = analyze_index('IWM', iwm_data)
+        vix_result = analyze_vix(vix_data)
+        breadth_result = analyze_breadth(stage2_states)
+
+        # 综合评分
+        composite, scores = calculate_composite_score(
+            spy_result, qqq_result, iwm_result, vix_result, breadth_result
+        )
+        regime_info = determine_regime(composite, spy_result, vix_result)
+        regime = regime_info[0]
+
+        # 写入 DB
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        save_market_pulse(
+            date_str=date_str,
+            regime=regime,
+            composite_score=composite,
+            component_scores=scores,
+            spy_price=spy_result['price'] if spy_result else None,
+            vix_value=vix_result['value'] if vix_result else None,
+            index_data={
+                'SPY': spy_result or {},
+                'QQQ': qqq_result or {},
+                'IWM': iwm_result or {},
+                'VIX': vix_result or {},
+            },
+            breadth_data=breadth_result or {},
+        )
+        logger.info(f"[MarketPulse] 已更新: {date_str} {regime} ({composite}/100)")
+        return True
+
+    except Exception as e:
+        logger.error(f"[MarketPulse] 更新失败: {e}")
+        return False
+
+
 def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
     """
     对单只 ticker 运行全部策略（Stage2 + VCP + Bottom Fisher）。
@@ -523,7 +669,7 @@ def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
     )
     from lib.models import TickerInfo
 
-    result = {'stage2': None, 'vcp': None, 'bottom_fisher': None}
+    result = {'stage2': None, 'vcp': None, 'bottom_fisher': None, 'buying_checklist': None}
     date_str = datetime.now().strftime('%Y-%m-%d')
 
     # Stage 2
@@ -669,6 +815,57 @@ def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
     except Exception as e:
         logger.warning(f"[Refresh] {symbol}: Bottom Fisher 分析失败: {e}")
 
+    # Buying Checklist
+    try:
+        from scripts.buying_checklist import analyze_buying_checklist
+        data = get_prices_as_dataframe(symbol, min_rows=200)
+        if data is not None:
+            stage2_states_list = get_strategy_states('stage2')
+            stage2_states = {s['symbol']: s for s in stage2_states_list}
+            bf_states_list = get_strategy_states('bottom_fisher')
+            bf_states = {s['symbol']: s for s in bf_states_list}
+            ticker_info = TickerInfo(symbol=symbol, name=name, sector=sector)
+            bc_result = analyze_buying_checklist(symbol, ticker_info, data, stage2_states, bf_states)
+            if bc_result:
+                save_strategy_result(
+                    symbol=symbol, date_str=date_str, strategy='buying_checklist',
+                    is_signal=bc_result['is_bc_signal'], score=bc_result['bc_score'],
+                    passed=bc_result['passed'], total=bc_result['total'],
+                    conditions=bc_result['conditions'],
+                    condition_details=bc_result.get('condition_details', {}),
+                    metrics={
+                        'name': name, 'sector': sector,
+                        'price': bc_result['price'],
+                        'bc_score': bc_result['bc_score'],
+                        'weekly_impulse': bc_result['weekly_impulse'],
+                        'weekly_trend': bc_result['weekly_trend'],
+                        'impulse_streak': bc_result['impulse_streak'],
+                        'week52_high': bc_result['week52_high'],
+                        'week52_low': bc_result['week52_low'],
+                        'sma50': bc_result.get('sma50'),
+                        'sma200': bc_result.get('sma200'),
+                        'sma10': bc_result.get('sma10'),
+                        'chg_5d': bc_result.get('chg_5d'),
+                        'chg_20d': bc_result.get('chg_20d'),
+                    },
+                    summary=f"{'BC' if bc_result['is_bc_signal'] else '--'} {symbol} "
+                            f"{bc_result['passed']}/{bc_result['total']} "
+                            f"Score:{bc_result['bc_score']}",
+                )
+                upsert_strategy_state(
+                    symbol=symbol, strategy='buying_checklist',
+                    is_active=bc_result['is_bc_signal'],
+                    entry_date=date_str if bc_result['is_bc_signal'] else None,
+                    entry_price=bc_result['price'] if bc_result['is_bc_signal'] else None,
+                    extra={'bc_score': bc_result['bc_score']},
+                )
+                result['buying_checklist'] = {
+                    'is_signal': bc_result['is_bc_signal'],
+                    'score': bc_result['bc_score'],
+                }
+    except Exception as e:
+        logger.warning(f"[Refresh] {symbol}: Buying Checklist 分析失败: {e}")
+
     return result
 
 
@@ -786,6 +983,16 @@ def refresh_all_prices():
 
     logger.info(f"[Refresh] 全量刷新完成: 更新 {updated} / 跳过 {skipped} / 失败 {errors} / 重算策略 {recalculated}")
 
+    # ── 刷新完成后自动更新 Market Pulse ──
+    # 确保页面底部的 latest_date 与策略结果日期一致
+    pulse_updated = False
+    try:
+        pulse_updated = _update_market_pulse()
+        if pulse_updated:
+            logger.info("[Refresh] Market Pulse 已自动更新")
+    except Exception as e:
+        logger.warning(f"[Refresh] Market Pulse 自动更新失败: {e}")
+
     yield {
         'type': 'complete',
         'total': total,
@@ -793,6 +1000,7 @@ def refresh_all_prices():
         'skipped': skipped,
         'errors': errors,
         'strategies_recalculated': recalculated,
+        'pulse_updated': pulse_updated,
     }
 
 

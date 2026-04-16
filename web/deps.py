@@ -81,6 +81,7 @@ def _strategy_label(strategy):
         "stage2": "Stage 2",
         "vcp": "VCP",
         "bottom_fisher": "Bottom Fisher",
+        "buying_checklist": "Buying Checklist",
     }
     return mapping.get(strategy, strategy)
 

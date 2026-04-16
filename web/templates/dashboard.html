@@ -111,6 +111,32 @@
         <div class="empty-state">暂无抄底信号</div>
         {% endif %}
     </div>
+
+    {# Buying Checklist #}
+    <div class="strategy-card">
+        <div class="strategy-card-header">
+            <h3>📋 Buying Checklist 买入检查</h3>
+            <span class="strategy-count">{{ bc_signals | length }}/{{ bc_total }}</span>
+        </div>
+        {% if bc_signals %}
+        <ul class="signal-list">
+            {% for s in bc_signals[:8] %}
+            <li class="signal-item">
+                <a href="/ticker/{{ s.symbol }}" class="ticker-link">{{ s.symbol }}</a>
+                <span class="name">{{ s.metrics.name if s.metrics and s.metrics.name else s.symbol }}</span>
+                <span class="score {{ s.score | score_color }}">{{ s.score | fmt_score }}</span>
+            </li>
+            {% endfor %}
+        </ul>
+        {% if bc_signals | length > 8 %}
+        <div style="text-align:center; padding-top:8px;">
+            <a href="/watchlist?signal_only=true" style="font-size:12px;">查看全部 →</a>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">暂无买入检查信号</div>
+        {% endif %}
+    </div>
 </div>
 
 {# ============================================================ #}

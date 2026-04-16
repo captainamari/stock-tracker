@@ -203,6 +203,7 @@ async def api_dashboard():
     stage2 = db.get_strategy_results("stage2", date_str=latest_date, signal_only=True, limit=50) if latest_date else []
     vcp = db.get_strategy_results("vcp", date_str=latest_date, signal_only=True, limit=50) if latest_date else []
     bf = db.get_strategy_results("bottom_fisher", date_str=latest_date, signal_only=True, limit=50) if latest_date else []
+    bc = db.get_strategy_results("buying_checklist", date_str=latest_date, signal_only=True, limit=50) if latest_date else []
     changes = db.get_signal_changes(limit=20)
 
     return {
@@ -211,6 +212,7 @@ async def api_dashboard():
         "stage2_signals": stage2,
         "vcp_signals": vcp,
         "bf_signals": bf,
+        "bc_signals": bc,
         "signal_changes": changes,
     }
 
@@ -248,11 +250,13 @@ async def api_ticker(symbol: str):
     s2 = db.get_strategy_results("stage2", date_str=latest_date, symbol=symbol) if latest_date else []
     vcp = db.get_strategy_results("vcp", date_str=latest_date, symbol=symbol) if latest_date else []
     bf = db.get_strategy_results("bottom_fisher", date_str=latest_date, symbol=symbol) if latest_date else []
+    bc = db.get_strategy_results("buying_checklist", date_str=latest_date, symbol=symbol) if latest_date else []
 
     # Fallback: Web 新增的 ticker 策略结果日期可能与 market_pulse 不同
     s2_result = s2[0] if s2 else None
     vcp_result = vcp[0] if vcp else None
     bf_result = bf[0] if bf else None
+    bc_result = bc[0] if bc else None
 
     if not s2_result:
         fallback = db.get_strategy_results("stage2", symbol=symbol, limit=1)
@@ -263,15 +267,20 @@ async def api_ticker(symbol: str):
     if not bf_result:
         fallback = db.get_strategy_results("bottom_fisher", symbol=symbol, limit=1)
         bf_result = fallback[0] if fallback else None
+    if not bc_result:
+        fallback = db.get_strategy_results("buying_checklist", symbol=symbol, limit=1)
+        bc_result = fallback[0] if fallback else None
 
     return {
         "stage2": s2_result,
         "vcp": vcp_result,
         "bottom_fisher": bf_result,
+        "buying_checklist": bc_result,
         "states": {
             "stage2": db.get_strategy_state(symbol, "stage2"),
             "vcp": db.get_strategy_state(symbol, "vcp"),
             "bottom_fisher": db.get_strategy_state(symbol, "bottom_fisher"),
+            "buying_checklist": db.get_strategy_state(symbol, "buying_checklist"),
         },
         "signal_changes": db.get_signal_changes(symbol=symbol, limit=30),
     }

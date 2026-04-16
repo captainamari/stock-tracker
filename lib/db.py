@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS strategy_results (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol          TEXT NOT NULL,
     date            TEXT NOT NULL,               -- YYYY-MM-DD
-    strategy        TEXT NOT NULL,               -- 'stage2' | 'vcp' | 'bottom_fisher' | 'market_pulse'
+    strategy        TEXT NOT NULL,               -- 'stage2' | 'vcp' | 'bottom_fisher' | 'buying_checklist' | 'market_pulse'
     is_signal       INTEGER DEFAULT 0,           -- 是否触发信号
     score           REAL DEFAULT 0,              -- 策略评分 (0-100)
     passed          INTEGER DEFAULT 0,           -- 满足条件数
@@ -104,7 +104,7 @@ CREATE INDEX IF NOT EXISTS idx_results_symbol_date ON strategy_results(symbol, d
 -- 策略状态：每个策略的当前状态跟踪（替代 state/*.json）
 CREATE TABLE IF NOT EXISTS strategy_states (
     symbol          TEXT NOT NULL,
-    strategy        TEXT NOT NULL,               -- 'stage2' | 'vcp' | 'bottom_fisher'
+    strategy        TEXT NOT NULL,               -- 'stage2' | 'vcp' | 'bottom_fisher' | 'buying_checklist'
     is_active       INTEGER DEFAULT 0,           -- 当前是否处于活跃信号状态
     entry_date      TEXT,                        -- 首次进入信号的日期
     entry_price     REAL,                        -- 进入时的价格

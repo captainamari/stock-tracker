@@ -27,12 +27,14 @@ def _build_watchlist_data(sector: Optional[str] = None,
     stage2_states = {s["symbol"]: s for s in db.get_strategy_states("stage2")}
     vcp_states = {s["symbol"]: s for s in db.get_strategy_states("vcp")}
     bf_states = {s["symbol"]: s for s in db.get_strategy_states("bottom_fisher")}
+    bc_states = {s["symbol"]: s for s in db.get_strategy_states("buying_checklist")}
 
     # 4. 获取最新策略结果 (用于 score 和 metrics)
     #    按 market_pulse latest_date 批量查一次（大多数 ticker 的结果与此日期一致）
     stage2_results = {}
     vcp_results = {}
     bf_results = {}
+    bc_results = {}
     if latest_date:
         for r in db.get_strategy_results("stage2", date_str=latest_date, limit=200):
             stage2_results[r["symbol"]] = r
@@ -40,6 +42,8 @@ def _build_watchlist_data(sector: Optional[str] = None,
             vcp_results[r["symbol"]] = r
         for r in db.get_strategy_results("bottom_fisher", date_str=latest_date, limit=200):
             bf_results[r["symbol"]] = r
+        for r in db.get_strategy_results("buying_checklist", date_str=latest_date, limit=200):
+            bc_results[r["symbol"]] = r
 
     # 5. 组装每只股票的综合数据行
     rows = []
@@ -48,6 +52,7 @@ def _build_watchlist_data(sector: Optional[str] = None,
         s2 = stage2_results.get(sym, {})
         vcp = vcp_results.get(sym, {})
         bf = bf_results.get(sym, {})
+        bc = bc_results.get(sym, {})
 
         # Fallback: 如果按 latest_date 查不到策略结果（例如 Web 新增的 ticker
         # 其策略结果日期可能与批量跑的 market_pulse 日期不同），
@@ -64,10 +69,15 @@ def _build_watchlist_data(sector: Optional[str] = None,
             fallback = db.get_strategy_results("bottom_fisher", symbol=sym, limit=1)
             if fallback:
                 bf = fallback[0]
+        if not bc:
+            fallback = db.get_strategy_results("buying_checklist", symbol=sym, limit=1)
+            if fallback:
+                bc = fallback[0]
 
         s2_state = stage2_states.get(sym, {})
         vcp_state = vcp_states.get(sym, {})
         bf_state = bf_states.get(sym, {})
+        bc_state = bc_states.get(sym, {})
 
         metrics = s2.get("metrics", {}) or bf.get("metrics", {}) or {}
         price = metrics.get("price")
@@ -97,6 +107,12 @@ def _build_watchlist_data(sector: Optional[str] = None,
             "bf_score": bf.get("score"),
             "bf_passed": bf.get("passed", 0),
             "bf_total": bf.get("total", 0),
+            # Buying Checklist
+            "bc_active": bc_state.get("is_active", 0),
+            "bc_score": bc.get("score"),
+            "bc_passed": bc.get("passed", 0),
+            "bc_total": bc.get("total", 0),
+            "bc_impulse": (bc.get("metrics") or {}).get("weekly_impulse", ""),
         }
         rows.append(row)
 
@@ -107,7 +123,7 @@ def _build_watchlist_data(sector: Optional[str] = None,
         q = search.upper()
         rows = [r for r in rows if q in r["symbol"].upper() or q in r["name"].upper()]
     if signal_only:
-        rows = [r for r in rows if r["s2_active"] or r["vcp_active"] or r["bf_active"]]
+        rows = [r for r in rows if r["s2_active"] or r["vcp_active"] or r["bf_active"] or r["bc_active"]]
 
     # 7. 默认按 Stage2 score 倒序
     rows.sort(key=lambda r: (r["s2_score"] or 0), reverse=True)
