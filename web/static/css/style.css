@@ -560,12 +560,17 @@ a:hover {
 /* Strategy detail cards */
 .detail-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
     margin-bottom: 20px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
+    .detail-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (max-width: 600px) {
     .detail-grid {
         grid-template-columns: 1fr;
     }
@@ -1019,6 +1024,825 @@ a:hover {
     color: var(--red);
 }
 
+/* ============================================================
+   4-Column Strategy Grid (used in Ticker Detail)
+   ============================================================ */
+.strategy-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+@media (max-width: 1100px) {
+    .strategy-grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+    .strategy-grid-4 { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   Dashboard — Strategy Signals Tab + Mini Table
+   ============================================================ */
+.strategy-signals-card {
+    padding: 0;
+    overflow: hidden;
+}
+
+.strategy-tab-nav {
+    display: flex;
+    border-bottom: 2px solid var(--border);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.strategy-tab-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 12px 20px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.15s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.strategy-tab-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+.strategy-tab-btn.active {
+    color: var(--blue);
+    border-bottom-color: var(--blue);
+}
+
+.strategy-tab-count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--bg-hover);
+    padding: 1px 7px;
+    border-radius: 10px;
+    color: var(--text-dim);
+    font-weight: 600;
+}
+.strategy-tab-btn.active .strategy-tab-count {
+    background: var(--blue-bg);
+    color: var(--blue);
+}
+
+.strategy-tab-panel {
+    display: none;
+    padding: 0;
+}
+.strategy-tab-panel.active {
+    display: block;
+    animation: tabFadeIn 0.2s ease;
+}
+
+/* Signal Mini Table */
+.signal-mini-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.signal-mini-table thead th {
+    text-align: left;
+    padding: 10px 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-light);
+    background: var(--bg-card);
+}
+.signal-mini-table thead th.col-score-header {
+    text-align: right;
+    padding-right: 20px;
+}
+.signal-mini-table thead th.col-price {
+    text-align: right;
+}
+
+.signal-mini-row {
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.signal-mini-row:hover {
+    background: var(--bg-hover);
+}
+.signal-mini-row td {
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border-light);
+    vertical-align: middle;
+}
+.signal-mini-row:last-child td {
+    border-bottom: none;
+}
+
+.signal-mini-table .col-ticker {
+    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    width: 100px;
+}
+.signal-mini-table .col-ticker a {
+    color: var(--text-primary);
+    text-decoration: none;
+}
+.signal-mini-table .col-ticker a:hover {
+    color: var(--blue);
+}
+
+.signal-mini-table .col-price {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: right;
+    width: 100px;
+}
+
+.signal-mini-table .col-score-cell {
+    text-align: right;
+    width: 160px;
+}
+
+.score-inline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.score-bar-mini {
+    width: 80px;
+    height: 5px;
+    background: var(--bg-hover);
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.score-bar-mini-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+.score-bar-mini-fill.green { background: var(--green); }
+.score-bar-mini-fill.yellow { background: var(--yellow); }
+.score-bar-mini-fill.orange { background: var(--orange); }
+.score-bar-mini-fill.red { background: var(--red); }
+
+.score-num {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 13px;
+    min-width: 28px;
+    text-align: right;
+}
+
+.signal-show-all {
+    text-align: center;
+    padding: 10px 20px;
+    border-top: 1px solid var(--border-light);
+}
+.signal-show-all a {
+    font-size: 13px;
+    color: var(--text-secondary);
+    transition: color 0.15s;
+}
+.signal-show-all a:hover {
+    color: var(--blue);
+    text-decoration: none;
+}
+
+.empty-state-sm {
+    text-align: center;
+    padding: 24px 20px;
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+.grid-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+@media (max-width: 900px) {
+    .grid-2col { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   Ticker Detail — Mini Strategy Cards
+   ============================================================ */
+.strategy-mini-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.strategy-mini-card.active {
+    border-color: var(--green);
+}
+.strategy-mini-card.inactive {
+    opacity: 0.65;
+}
+
+.mini-card-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.mini-card-icon {
+    font-size: 16px;
+}
+.mini-card-name {
+    font-size: 13px;
+    font-weight: 600;
+    flex: 1;
+}
+.mini-status {
+    font-size: 11px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+.mini-status.on {
+    background: var(--green-bg);
+    color: var(--green);
+}
+.mini-status.off {
+    background: var(--bg-hover);
+    color: var(--text-dim);
+}
+
+.mini-card-body {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.mini-score {
+    font-size: 22px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    line-height: 1;
+}
+.mini-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.btn-expand-detail {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 0;
+    text-align: left;
+    transition: color 0.15s;
+}
+.btn-expand-detail:hover {
+    color: var(--blue);
+}
+
+/* ============================================================
+   Conditions Panel (collapsible)
+   ============================================================ */
+.conditions-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+    animation: panelSlideDown 0.2s ease;
+}
+@keyframes panelSlideDown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.conditions-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.conditions-panel-header .card-subtitle {
+    flex: 1;
+}
+.btn-collapse {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.btn-collapse:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.conditions-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.condition-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+    font-size: 12px;
+    border: 1px solid var(--border-light);
+}
+.condition-chip.pass {
+    background: var(--green-bg);
+    border-color: rgba(63, 185, 80, 0.2);
+}
+.condition-chip.fail {
+    background: var(--red-bg);
+    border-color: rgba(248, 81, 73, 0.2);
+}
+.condition-chip.na {
+    background: var(--bg-hover);
+}
+.condition-chip .condition-icon {
+    font-size: 12px;
+}
+.condition-chip .condition-name {
+    font-weight: 500;
+    font-size: 12px;
+    min-width: 0;
+}
+.condition-chip .condition-tip {
+    cursor: help;
+    font-size: 11px;
+    opacity: 0.6;
+}
+.condition-chip .condition-tip:hover {
+    opacity: 1;
+}
+
+.conditions-details-table {
+    border-top: 1px solid var(--border-light);
+    padding-top: 8px;
+}
+.conditions-details-table .detail-row {
+    display: flex;
+    gap: 12px;
+    padding: 3px 0;
+    font-size: 12px;
+}
+.conditions-details-table .detail-key {
+    font-weight: 600;
+    min-width: 140px;
+    flex-shrink: 0;
+}
+.conditions-details-table .detail-val {
+    color: var(--text-secondary);
+}
+
+/* ============================================================
+   Tab Navigation for Technical Indicators
+   ============================================================ */
+.tech-indicators-card {
+    margin-bottom: 20px;
+}
+
+.tab-nav {
+    display: flex;
+    gap: 2px;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 16px;
+}
+.tab-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 16px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.tab-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+.tab-btn.active {
+    color: var(--blue);
+    border-bottom-color: var(--blue);
+}
+
+.tab-panel {
+    display: none;
+}
+.tab-panel.active {
+    display: block;
+    animation: tabFadeIn 0.2s ease;
+}
+@keyframes tabFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   Technical Indicator Shared Styles
+   ============================================================ */
+.tech-section {
+    /* container */
+}
+.tech-subsection {
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-light);
+}
+.tech-subsection:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+.tech-subtitle {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tech-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.tech-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+@media (max-width: 700px) {
+    .tech-grid-2, .tech-grid-3 { grid-template-columns: 1fr; }
+}
+
+/* Status Bar */
+.tech-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    margin-bottom: 12px;
+}
+.tech-status-bar.bullish {
+    background: var(--green-bg);
+    border-left: 3px solid var(--green);
+}
+.tech-status-bar.bearish {
+    background: var(--red-bg);
+    border-left: 3px solid var(--red);
+}
+.tech-status-bar.neutral {
+    background: var(--yellow-bg);
+    border-left: 3px solid var(--yellow);
+}
+.tech-status-label {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+.tech-status-value {
+    font-weight: 600;
+}
+.tech-badge {
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 600;
+    margin-left: auto;
+}
+.tech-badge.bullish {
+    background: var(--green-bg);
+    color: var(--green);
+}
+.tech-badge.bearish {
+    background: var(--red-bg);
+    color: var(--red);
+}
+
+/* Metric cards */
+.tech-metric {
+    background: var(--bg-hover);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.tech-metric-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.tech-metric-value {
+    font-size: 16px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+.tech-metric-tag {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+/* Gauge bars (for RSI etc.) */
+.tech-gauge {
+    background: var(--bg-hover);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+}
+.gauge-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 6px;
+}
+.gauge-bar {
+    height: 6px;
+    background: var(--bg-input);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+}
+.gauge-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+.gauge-fill.rsi {
+    background: linear-gradient(90deg, var(--green) 0%, var(--yellow) 50%, var(--red) 100%);
+}
+.gauge-value {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    margin-top: 4px;
+}
+
+/* Data blocks */
+.tech-data-block {
+    background: var(--bg-hover);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+}
+.data-block-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+}
+.data-block-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+    font-size: 12px;
+}
+.data-block-row span:first-child {
+    color: var(--text-secondary);
+}
+
+/* HV display */
+.hv-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0;
+}
+.hv-value {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+.hv-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* ============================================================
+   Bollinger Bands Visual
+   ============================================================ */
+.bollinger-visual {
+    background: var(--bg-hover);
+    border-radius: var(--radius);
+    padding: 12px;
+}
+.bb-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 13px;
+}
+.bb-label {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+.bb-val {
+    font-family: var(--font-mono);
+    font-weight: 600;
+}
+.bb-row.bb-upper .bb-val { color: var(--red); }
+.bb-row.bb-mid .bb-val { color: var(--yellow); }
+.bb-row.bb-lower .bb-val { color: var(--green); }
+.bb-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-light);
+    margin-top: 4px;
+    color: var(--text-secondary);
+}
+
+/* ============================================================
+   52-Week Range Visual
+   ============================================================ */
+.range-visual {
+    background: var(--bg-hover);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+}
+.range-endpoints {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+.range-bar {
+    height: 6px;
+    background: linear-gradient(90deg, var(--red) 0%, var(--yellow) 50%, var(--green) 100%);
+    border-radius: 3px;
+    position: relative;
+    margin-bottom: 8px;
+}
+.range-current {
+    position: absolute;
+    top: -3px;
+    width: 12px;
+    height: 12px;
+    background: var(--text-primary);
+    border-radius: 50%;
+    border: 2px solid var(--bg-card);
+    transform: translateX(-50%);
+}
+.range-current-label {
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+.range-pcts {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+}
+
+/* ============================================================
+   Support / Resistance Levels
+   ============================================================ */
+.level-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.level-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+.level-item {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: var(--radius);
+}
+.level-item.support {
+    background: var(--green-bg);
+    color: var(--green);
+}
+.level-item.resistance {
+    background: var(--red-bg);
+    color: var(--red);
+}
+
+/* ============================================================
+   Fibonacci Levels
+   ============================================================ */
+.fib-levels {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.fib-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    font-size: 13px;
+}
+.fib-row.current {
+    background: var(--blue-bg);
+    border: 1px solid rgba(88, 166, 255, 0.2);
+}
+.fib-row.support {
+    background: var(--green-bg);
+    border: 1px solid rgba(63, 185, 80, 0.1);
+}
+.fib-row.resistance {
+    background: var(--red-bg);
+    border: 1px solid rgba(248, 81, 73, 0.1);
+}
+.fib-row.extension {
+    background: rgba(188, 140, 255, 0.06);
+    border: 1px solid rgba(188, 140, 255, 0.15);
+}
+.fib-ratio {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    min-width: 60px;
+    color: var(--text-secondary);
+}
+.fib-price {
+    min-width: 80px;
+    font-weight: 600;
+}
+.fib-dist {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    min-width: 60px;
+    text-align: right;
+}
+.fib-role {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-left: auto;
+}
+
+.fib-zone-summary {
+    display: flex;
+    gap: 16px;
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: var(--bg-hover);
+    border-radius: var(--radius);
+}
+.fib-zone-item {
+    display: flex;
+    gap: 8px;
+    font-size: 13px;
+    align-items: center;
+}
+
+/* ============================================================
+   Key Metrics Grid (ticker detail)
+   ============================================================ */
+.key-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px;
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 768px) {
     .app-main {
@@ -1037,5 +1861,30 @@ a:hover {
     }
     .modal {
         width: 95vw;
+    }
+    .tab-nav {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .tab-btn {
+        font-size: 12px;
+        padding: 6px 12px;
+    }
+    .strategy-tab-btn {
+        font-size: 12px;
+        padding: 10px 12px;
+    }
+    .strategy-tab-count {
+        font-size: 10px;
+    }
+    .signal-mini-table thead th,
+    .signal-mini-row td {
+        padding: 8px 12px;
+    }
+    .score-bar-mini {
+        width: 50px;
+    }
+    .signal-mini-table .col-score-cell {
+        width: 120px;
     }
 }

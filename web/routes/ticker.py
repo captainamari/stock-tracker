@@ -1,13 +1,27 @@
 """
 Ticker Detail 个股详情路由
-展示：策略状态卡片 + 条件明细 + 关键指标 + 信号历史 + Score 走势
+展示：策略状态卡片 + 四大技术指标 + 条件明细 + 信号历史 + Score 走势
 """
 
+import logging
 from fastapi import APIRouter, Request, HTTPException
 from lib import db
 from web.deps import templates
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["ticker"])
+
+
+def _compute_technical_indicators(symbol: str) -> dict:
+    """计算个股的四大技术指标（实时从价格数据计算）"""
+    try:
+        from lib.technical_analysis import compute_technical_indicators
+        data = db.get_prices_as_dataframe(symbol, min_rows=50)
+        if data is not None:
+            return compute_technical_indicators(data)
+    except Exception as e:
+        logger.warning(f"[Ticker] {symbol}: 技术指标计算失败: {e}")
+    return {}
 
 
 def _build_ticker_data(symbol: str) -> dict:
@@ -30,15 +44,13 @@ def _build_ticker_data(symbol: str) -> dict:
     pulse = db.get_latest_market_pulse()
     latest_date = pulse["date"] if pulse else None
 
-    # 3. 三个策略的当前状态
+    # 3. 四个策略的当前状态
     s2_state = db.get_strategy_state(symbol, "stage2")
     vcp_state = db.get_strategy_state(symbol, "vcp")
     bf_state = db.get_strategy_state(symbol, "bottom_fisher")
     bc_state = db.get_strategy_state(symbol, "buying_checklist")
 
     # 4. 最新策略结果
-    #    先按 market_pulse latest_date 查；查不到则 fallback 查该 ticker 最新一条
-    #    （Web 新增的 ticker 策略结果日期可能与批量 market_pulse 日期不同）
     s2_result = None
     vcp_result = None
     bf_result = None
@@ -53,7 +65,7 @@ def _build_ticker_data(symbol: str) -> dict:
         bc_results = db.get_strategy_results("buying_checklist", date_str=latest_date, symbol=symbol)
         bc_result = bc_results[0] if bc_results else None
 
-    # Fallback: 按 latest_date 查不到时，回退查该 ticker 最新一条策略结果
+    # Fallback
     if not s2_result:
         fallback = db.get_strategy_results("stage2", symbol=symbol, limit=1)
         s2_result = fallback[0] if fallback else None
@@ -72,7 +84,7 @@ def _build_ticker_data(symbol: str) -> dict:
 
     # 6. 策略历史 (Score 走势)
     s2_history = db.get_strategy_history(symbol, "stage2", days=30)
-    s2_history.reverse()  # 按日期升序
+    s2_history.reverse()
     vcp_history = db.get_strategy_history(symbol, "vcp", days=30)
     vcp_history.reverse()
     bf_history = db.get_strategy_history(symbol, "bottom_fisher", days=30)
@@ -97,6 +109,9 @@ def _build_ticker_data(symbol: str) -> dict:
             s2_days = (current - entry).days
         except (ValueError, TypeError):
             pass
+
+    # 9. 四大技术指标（实时计算）
+    tech_indicators = _compute_technical_indicators(symbol)
 
     return {
         "ticker": ticker_info,
@@ -123,6 +138,8 @@ def _build_ticker_data(symbol: str) -> dict:
         "vcp_history": vcp_history,
         "bf_history": bf_history,
         "bc_history": bc_history,
+        # 四大技术指标
+        "tech": tech_indicators,
     }
 
 

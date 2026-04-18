@@ -271,6 +271,16 @@ async def api_ticker(symbol: str):
         fallback = db.get_strategy_results("buying_checklist", symbol=symbol, limit=1)
         bc_result = fallback[0] if fallback else None
 
+    # 技术指标（实时计算）
+    tech = {}
+    try:
+        from lib.technical_analysis import compute_technical_indicators
+        data = db.get_prices_as_dataframe(symbol, min_rows=50)
+        if data is not None:
+            tech = compute_technical_indicators(data)
+    except Exception as e:
+        logger.warning(f"[API] {symbol}: 技术指标计算失败: {e}")
+
     return {
         "stage2": s2_result,
         "vcp": vcp_result,
@@ -283,6 +293,7 @@ async def api_ticker(symbol: str):
             "buying_checklist": db.get_strategy_state(symbol, "buying_checklist"),
         },
         "signal_changes": db.get_signal_changes(symbol=symbol, limit=30),
+        "technical_indicators": tech,
     }
 
 

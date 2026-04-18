@@ -4,7 +4,7 @@
 {% block content %}
 
 {# ============================================================ #}
-{# Market Pulse Hero                                             #}
+{# Market Pulse Hero — 紧凑版                                    #}
 {# ============================================================ #}
 {% if pulse %}
 <div class="pulse-hero {{ pulse.regime }}">
@@ -13,14 +13,13 @@
         <div class="pulse-info">
             <h2>{{ pulse.regime | upper }} — {{ pulse.regime | regime_label }}</h2>
             <div class="pulse-meta">
-                <span>综合评分: <strong class="text-mono">{{ pulse.composite_score | fmt_score }}</strong>/100</span>
+                <span>综合: <strong class="text-mono">{{ pulse.composite_score | fmt_score }}</strong>/100</span>
                 {% if pulse.spy_price %}<span>SPY {{ pulse.spy_price | fmt_price }}</span>{% endif %}
                 {% if pulse.vix_value %}<span>VIX <strong class="text-mono">{{ "%.1f" | format(pulse.vix_value) }}</strong></span>{% endif %}
                 <span>{{ pulse.date }}</span>
             </div>
         </div>
     </div>
-
     <div class="pulse-scores">
         {% for key, val in pulse.component_scores.items() %}
         <div class="pulse-score-item">
@@ -41,108 +40,82 @@
 {% endif %}
 
 {# ============================================================ #}
-{# 三策略信号摘要                                                #}
+{# 四策略信号摘要 — 统一 Tab + 迷你表格                         #}
 {# ============================================================ #}
-<div class="strategy-grid">
-    {# Stage 2 #}
-    <div class="strategy-card">
-        <div class="strategy-card-header">
-            <h3>🟢 Stage 2 趋势确认</h3>
-            <span class="strategy-count">{{ stage2_signals | length }}/{{ stage2_total }}</span>
-        </div>
-        {% if stage2_signals %}
-        <ul class="signal-list">
-            {% for s in stage2_signals[:8] %}
-            <li class="signal-item">
-                <a href="/ticker/{{ s.symbol }}" class="ticker-link">{{ s.symbol }}</a>
-                <span class="name">{{ s.metrics.name if s.metrics and s.metrics.name else s.symbol }}</span>
-                <span class="score {{ s.score | score_color }}">{{ s.score | fmt_score }}</span>
-            </li>
-            {% endfor %}
-        </ul>
-        {% if stage2_signals | length > 8 %}
-        <div style="text-align:center; padding-top:8px;">
-            <a href="/watchlist?signal_only=true" style="font-size:12px;">查看全部 →</a>
-        </div>
-        {% endif %}
-        {% else %}
-        <div class="empty-state">暂无 Stage 2 信号</div>
-        {% endif %}
+{% set strategies = [
+    ('stage2',  '🟢 Stage 2',       stage2_signals, stage2_total),
+    ('vcp',     '🎯 VCP',           vcp_signals,    vcp_total),
+    ('bf',      '🔻 Bottom Fisher', bf_signals,     bf_total),
+    ('bc',      '📋 Buying Checklist', bc_signals,  bc_total),
+] %}
+<div class="card strategy-signals-card">
+    {# Tab 导航 #}
+    <div class="strategy-tab-nav" role="tablist">
+        {% for key, label, signals, total in strategies %}
+        <button class="strategy-tab-btn {% if loop.first %}active{% endif %}"
+                role="tab"
+                data-target="stab-{{ key }}"
+                aria-selected="{{ 'true' if loop.first else 'false' }}">
+            {{ label }}
+            <span class="strategy-tab-count">{{ signals | length }}/{{ total }}</span>
+        </button>
+        {% endfor %}
     </div>
 
-    {# VCP #}
-    <div class="strategy-card">
-        <div class="strategy-card-header">
-            <h3>🎯 VCP 右侧突破</h3>
-            <span class="strategy-count">{{ vcp_signals | length }}/{{ vcp_total }}</span>
-        </div>
-        {% if vcp_signals %}
-        <ul class="signal-list">
-            {% for s in vcp_signals[:8] %}
-            <li class="signal-item">
-                <a href="/ticker/{{ s.symbol }}" class="ticker-link">{{ s.symbol }}</a>
-                <span class="name">{{ s.metrics.name if s.metrics and s.metrics.name else s.symbol }}</span>
-                <span class="score {{ s.score | score_color }}">{{ s.score | fmt_score }}</span>
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <div class="empty-state">暂无 VCP 信号</div>
-        {% endif %}
-    </div>
-
-    {# Bottom Fisher #}
-    <div class="strategy-card">
-        <div class="strategy-card-header">
-            <h3>🔻 Bottom Fisher 抄底</h3>
-            <span class="strategy-count">{{ bf_signals | length }}/{{ bf_total }}</span>
-        </div>
-        {% if bf_signals %}
-        <ul class="signal-list">
-            {% for s in bf_signals[:8] %}
-            <li class="signal-item">
-                <a href="/ticker/{{ s.symbol }}" class="ticker-link">{{ s.symbol }}</a>
-                <span class="name">{{ s.metrics.name if s.metrics and s.metrics.name else s.symbol }}</span>
-                <span class="score {{ s.score | score_color }}">{{ s.score | fmt_score }}</span>
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <div class="empty-state">暂无抄底信号</div>
-        {% endif %}
-    </div>
-
-    {# Buying Checklist #}
-    <div class="strategy-card">
-        <div class="strategy-card-header">
-            <h3>📋 Buying Checklist 买入检查</h3>
-            <span class="strategy-count">{{ bc_signals | length }}/{{ bc_total }}</span>
-        </div>
-        {% if bc_signals %}
-        <ul class="signal-list">
-            {% for s in bc_signals[:8] %}
-            <li class="signal-item">
-                <a href="/ticker/{{ s.symbol }}" class="ticker-link">{{ s.symbol }}</a>
-                <span class="name">{{ s.metrics.name if s.metrics and s.metrics.name else s.symbol }}</span>
-                <span class="score {{ s.score | score_color }}">{{ s.score | fmt_score }}</span>
-            </li>
-            {% endfor %}
-        </ul>
-        {% if bc_signals | length > 8 %}
-        <div style="text-align:center; padding-top:8px;">
-            <a href="/watchlist?signal_only=true" style="font-size:12px;">查看全部 →</a>
+    {# Tab 内容面板 #}
+    {% for key, label, signals, total in strategies %}
+    <div class="strategy-tab-panel {% if loop.first %}active{% endif %}" id="stab-{{ key }}" role="tabpanel">
+        {% if signals %}
+        <table class="signal-mini-table">
+            <thead>
+                <tr>
+                    <th class="col-ticker">Ticker</th>
+                    <th class="col-price">Price</th>
+                    <th class="col-score-header">Score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in signals[:10] %}
+                <tr class="signal-mini-row" onclick="location.href='/ticker/{{ s.symbol }}'">
+                    <td class="col-ticker">
+                        <a href="/ticker/{{ s.symbol }}">{{ s.symbol }}</a>
+                    </td>
+                    <td class="col-price">
+                        {% if s.metrics and s.metrics.price %}
+                            {{ s.metrics.price | fmt_price }}
+                        {% else %}
+                            <span class="text-dim">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="col-score-cell">
+                        <div class="score-inline">
+                            <div class="score-bar-mini">
+                                <div class="score-bar-mini-fill {% if s.score >= 70 %}green{% elif s.score >= 50 %}yellow{% elif s.score >= 35 %}orange{% else %}red{% endif %}"
+                                     style="width: {{ s.score }}%"></div>
+                            </div>
+                            <span class="score-num {{ s.score | score_color }}">{{ s.score | fmt_score }}</span>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if signals | length > 10 %}
+        <div class="signal-show-all">
+            <a href="/watchlist?signal_only=true">查看全部 {{ signals | length }} 只 →</a>
         </div>
         {% endif %}
         {% else %}
-        <div class="empty-state">暂无买入检查信号</div>
+        <div class="empty-state-sm">暂无信号</div>
         {% endif %}
     </div>
+    {% endfor %}
 </div>
 
 {# ============================================================ #}
 {# 近期信号变化 + Market Pulse 走势 并排                         #}
 {# ============================================================ #}
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+<div class="grid-2col">
     {# Signal Changes #}
     <div class="card">
         <div class="card-header">
@@ -187,21 +160,37 @@
 
 {% block scripts %}
 <script>
+// 策略信号 Tab 切换
+document.querySelectorAll('.strategy-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const target = btn.dataset.target;
+        // 切换 tab 按钮状态
+        btn.closest('.strategy-tab-nav').querySelectorAll('.strategy-tab-btn').forEach(b => {
+            b.classList.remove('active');
+            b.setAttribute('aria-selected', 'false');
+        });
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected', 'true');
+        // 切换面板
+        btn.closest('.strategy-signals-card').querySelectorAll('.strategy-tab-panel').forEach(p => {
+            p.classList.remove('active');
+        });
+        document.getElementById(target).classList.add('active');
+    });
+});
+
 // Market Pulse 30天走势图
 const pulseData = {{ pulse_history | tojson }};
 if (pulseData && pulseData.length > 0) {
     const ctx = document.getElementById('pulseChart').getContext('2d');
-    const labels = pulseData.map(d => d.date.slice(5));  // MM-DD
+    const labels = pulseData.map(d => d.date.slice(5));
     const scores = pulseData.map(d => d.composite_score);
-
-    // 根据分数给每个点上色
     const pointColors = scores.map(s => {
         if (s >= 70) return '#3fb950';
         if (s >= 50) return '#d29922';
         if (s >= 35) return '#db6d28';
         return '#f85149';
     });
-
     new Chart(ctx, {
         type: 'line',
         data: {
