@@ -27,9 +27,9 @@ Scanned {{ total_analyzed }} stocks
    {{ parts|join(' · ') }}
 {% endif %}
 {% set badges = [] %}
-{% if m.rsi_oversold %}{% if badges.append("RSI超卖") %}{% endif %}{% endif %}
-{% if m.rsi_divergence %}{% if badges.append("RSI背离") %}{% endif %}{% endif %}
-{% if m.macd_divergence %}{% if badges.append("MACD背离") %}{% endif %}{% endif %}
+{% if m.rsi_oversold %}{% if badges.append("RSI Oversold") %}{% endif %}{% endif %}
+{% if m.rsi_divergence %}{% if badges.append("RSI Divergence") %}{% endif %}{% endif %}
+{% if m.macd_divergence %}{% if badges.append("MACD Divergence") %}{% endif %}{% endif %}
 {% if m.candle_pattern %}{% if badges.append(m.candle_pattern) %}{% endif %}{% endif %}
 {% if badges %}
    🔔 {{ badges|join(' · ') }}

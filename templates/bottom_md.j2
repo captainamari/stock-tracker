@@ -1,25 +1,25 @@
-# 抄底信号扫描报告
+# Bottom Signal Scan Report
 
-**时间**: {{ timestamp }}
-**分析数量**: {{ total_analyzed }}
+**Time**: {{ timestamp }}
+**Analyzed Count**: {{ total_analyzed }}
 
 {% if changes %}
-## 状态变化
+## Status Changes
 
 {% for c in changes %}
 {% if c.type == 'new_signal' %}
-- 新增抄底信号: **{{ c.ticker }}** (得分 {{ c.bf_score }}/100)
+- New bottom signal: **{{ c.ticker }}** (Score {{ c.bf_score }}/100)
 {% elif c.type == 'lost_signal' %}
-- 失去抄底信号: **{{ c.ticker }}**
+- Lost bottom signal: **{{ c.ticker }}**
 {% endif %}
 {% endfor %}
 
 {% endif %}
 {% if signal_stocks %}
-## 抄底信号股票
+## Bottom Signal Stocks
 
-| # | 代码 | 名称 | 价格 | 得分 | 条件 | RSI | 量比 | 距高点 |
-|---|------|------|------|------|------|-----|------|--------|
+| # | Code | Name | Price | Score | Conditions | RSI | Vol Ratio | From High |
+|---|------|------|-------|-------|------------|-----|-----------|-----------|
 {% for s in signal_stocks %}
 {% set rsi_str = s.metrics.get('rsi', 'N/A') %}
 {% set vol_str = s.metrics.get('vol_ratio', 'N/A') %}
@@ -28,6 +28,6 @@
 {% endfor %}
 
 {% else %}
-## 暂无抄底信号
+## No Bottom Signals
 
 {% endif %}

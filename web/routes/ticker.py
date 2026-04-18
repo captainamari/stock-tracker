@@ -6,7 +6,8 @@ Ticker Detail 个股详情路由
 import logging
 from fastapi import APIRouter, Request, HTTPException
 from lib import db
-from web.deps import templates
+from web.deps import templates, setup_i18n_context
+from web.i18n import get_language_from_request
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["ticker"])
@@ -145,11 +146,13 @@ def _build_ticker_data(symbol: str) -> dict:
 
 @router.get("/ticker/{symbol}")
 async def ticker_detail(request: Request, symbol: str):
+    lang = get_language_from_request(request)
+    i18n_ctx = setup_i18n_context(request, lang)
     data = _build_ticker_data(symbol)
     if data is None:
         raise HTTPException(status_code=404, detail=f"Ticker {symbol.upper()} not found")
     return templates.TemplateResponse(
         request=request,
         name="ticker_detail.html",
-        context={"page": "ticker", **data},
+        context={"page": "ticker", **data, **i18n_ctx},
     )

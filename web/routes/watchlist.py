@@ -6,7 +6,8 @@ Watchlist 观察列表路由
 from fastapi import APIRouter, Request, Query
 from typing import Optional
 from lib import db
-from web.deps import templates
+from web.deps import templates, setup_i18n_context
+from web.i18n import get_language_from_request
 
 router = APIRouter(tags=["watchlist"])
 
@@ -149,9 +150,11 @@ async def watchlist_page(
     signal_only: bool = Query(False),
     search: Optional[str] = Query(None),
 ):
+    lang = get_language_from_request(request)
+    i18n_ctx = setup_i18n_context(request, lang)
     data = _build_watchlist_data(sector=sector, signal_only=signal_only, search=search)
     return templates.TemplateResponse(
         request=request,
         name="watchlist.html",
-        context={"page": "watchlist", **data},
+        context={"page": "watchlist", **data, **i18n_ctx},
     )

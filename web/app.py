@@ -16,19 +16,21 @@ ROOT_DIR = Path(__file__).parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 
 from web.routes import dashboard, watchlist, ticker, api
+from web.i18n import get_language_from_request, SUPPORTED_LANGUAGES
 
 # ============================================================
 # App 初始化
 # ============================================================
 app = FastAPI(
     title="Stock Tracker Dashboard",
-    description="美股技术分析与信号监控系统",
+    description="US Stock Technical Analysis & Signal Monitoring System",
     version="4.0.0",
 )
 
@@ -39,6 +41,19 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 STATIC_DIR = Path(__file__).parent / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# ============================================================
+# 语言切换端点 — 设置 Cookie 并重定向回来
+# ============================================================
+@app.get("/set-lang/{lang}")
+async def set_language(request: Request, lang: str):
+    """切换界面语言，写入 Cookie 后重定向回 Referer 或首页"""
+    if lang not in SUPPORTED_LANGUAGES:
+        lang = "en"
+    referer = request.headers.get("referer", "/")
+    response = RedirectResponse(url=referer, status_code=302)
+    response.set_cookie("lang", lang, max_age=365 * 24 * 3600, httponly=False, samesite="lax")
+    return response
 
 # ============================================================
 # 注册路由

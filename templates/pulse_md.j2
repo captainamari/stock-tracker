@@ -1,20 +1,20 @@
 # {{ regime_emoji }} Market Pulse
 
-**时间**: {{ timestamp }}
-**综合评分**: {{ composite }}/100
-**市场状态**: {{ regime_label }}
-**操作建议**: {{ hint }}
+**Time**: {{ timestamp }}
+**Composite Score**: {{ composite }}/100
+**Market Status**: {{ regime_label }}
+**Action Suggestion**: {{ hint }}
 
 {% if regime_changed %}
-## 状态变化
+## Regime Change
 
 {{ prev_regime|upper }} → {{ regime_label }}
 
 {% endif %}
-## 指数概览
+## Index Overview
 
-| 指数 | 价格 | 评分 | vs MA50 | vs MA200 | RSI | 5D | 20D |
-|------|------|------|---------|----------|-----|-----|-----|
+| Index | Price | Score | vs MA50 | vs MA200 | RSI | 5D | 20D |
+|-------|-------|-------|---------|----------|-----|-----|-----|
 {% for idx in indices if idx is not none %}
 {% set ma50 = idx.pct_vs_sma50|fmt_pct if idx.pct_vs_sma50 is not none else "N/A" %}
 {% set ma200 = idx.pct_vs_sma200|fmt_pct if idx.pct_vs_sma200 is not none else "N/A" %}
@@ -31,7 +31,7 @@ VIX: {{ vix.value }} ({{ vix.zone_label }}) · Score: {{ vix.score }}/100
 
 {% endif %}
 {% if breadth %}
-## 宽度
+## Breadth
 
 >MA50: {{ breadth.above_sma50_pct|fmt_val(".0f") }}% · >MA200: {{ breadth.above_sma200_pct|fmt_val(".0f") }}% · Stage2: {{ breadth.stage2_pct|fmt_val(".0f") }}% · Score: {{ breadth.breadth_score }}/100
 

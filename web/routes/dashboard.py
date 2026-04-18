@@ -5,7 +5,8 @@ Dashboard 首页路由
 
 from fastapi import APIRouter, Request
 from lib import db
-from web.deps import templates
+from web.deps import templates, setup_i18n_context
+from web.i18n import get_language_from_request
 
 router = APIRouter(tags=["dashboard"])
 
@@ -107,9 +108,11 @@ def _build_dashboard_data() -> dict:
 
 @router.get("/")
 async def dashboard(request: Request):
+    lang = get_language_from_request(request)
+    i18n_ctx = setup_i18n_context(request, lang)
     data = _build_dashboard_data()
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
-        context={"page": "dashboard", **data},
+        context={"page": "dashboard", **data, **i18n_ctx},
     )

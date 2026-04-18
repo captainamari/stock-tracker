@@ -1,18 +1,18 @@
 {% extends "base.html" %}
-{% block title %}Watchlist — Stock Tracker{% endblock %}
+{% block title %}{{ _t('watchlist.title') if _t else 'Watchlist — Stock Tracker' }}{% endblock %}
 
 {% block content %}
 <div class="card-header" style="margin-bottom:16px;">
-    <span class="card-title" style="font-size:20px;">📋 Watchlist — 观察列表</span>
-    <span class="card-subtitle">{{ rows | length }} 只股票{% if filter_signal_only %} (仅信号){% endif %}{% if filter_sector %} · {{ filter_sector }}{% endif %}</span>
+    <span class="card-title" style="font-size:20px;">{{ _t('watchlist.page_title') if _t else '📋 Watchlist' }}</span>
+    <span class="card-subtitle">{{ _t('watchlist.stock_count', count=rows|length) if _t else (rows|length ~ ' stocks') }}{% if filter_signal_only %}{{ _t('watchlist.signal_only_suffix') if _t else ' (signals only)' }}{% endif %}{% if filter_sector %} · {{ filter_sector }}{% endif %}</span>
 </div>
 
 {# ============================================================ #}
-{# 筛选栏                                                        #}
+{# Filter bar                                                    #}
 {# ============================================================ #}
 <form class="filters-bar" method="get" action="/watchlist" id="filterForm">
     <select name="sector" class="filter-select" onchange="this.form.submit()">
-        <option value="">全部板块</option>
+        <option value="">{{ _t('watchlist.all_sectors') if _t else 'All Sectors' }}</option>
         {% for s in all_sectors %}
         <option value="{{ s }}" {% if filter_sector == s %}selected{% endif %}>{{ s }}</option>
         {% endfor %}
@@ -22,35 +22,35 @@
         <input type="checkbox" name="signal_only" value="true"
                {% if filter_signal_only %}checked{% endif %}
                onchange="this.form.submit()">
-        仅显示有信号的
+        {{ _t('watchlist.signal_only_label') if _t else 'Signals only' }}
     </label>
 
-    <input type="text" name="search" class="filter-input" placeholder="搜索 ticker / 名称..."
+    <input type="text" name="search" class="filter-input" placeholder="{{ _t('watchlist.search_placeholder') if _t else 'Search ticker / name...' }}"
            value="{{ filter_search }}" />
 
-    <button type="submit" style="background:var(--blue);color:white;border:none;padding:8px 16px;border-radius:var(--radius);cursor:pointer;font-size:13px;">搜索</button>
+    <button type="submit" style="background:var(--blue);color:white;border:none;padding:8px 16px;border-radius:var(--radius);cursor:pointer;font-size:13px;">{{ _t('common.search') if _t else 'Search' }}</button>
 
-    <button type="button" class="btn-refresh-prices" id="btnRefreshPrices" onclick="refreshPrices()">🔄 更新价格</button>
-    <button type="button" class="btn-add-ticker" onclick="openAddTickerModal()">➕ 添加 Ticker</button>
+    <button type="button" class="btn-refresh-prices" id="btnRefreshPrices" onclick="refreshPrices()">{{ _t('watchlist.refresh_prices') if _t else '🔄 Update Prices' }}</button>
+    <button type="button" class="btn-add-ticker" onclick="openAddTickerModal()">{{ _t('watchlist.add_ticker') if _t else '➕ Add Ticker' }}</button>
 </form>
 
 {# ============================================================ #}
-{# 价格刷新进度面板                                              #}
+{# Price refresh progress panel                                  #}
 {# ============================================================ #}
 <div id="refreshPanel" class="refresh-panel" style="display:none;">
     <div class="refresh-panel-header">
-        <span id="refreshTitle">🔄 正在更新价格...</span>
+        <span id="refreshTitle">{{ _t('watchlist.refresh_panel_title') if _t else '🔄 Updating prices...' }}</span>
         <button class="refresh-panel-close" id="refreshCloseBtn" onclick="closeRefreshPanel()" style="display:none;">&times;</button>
     </div>
     <div class="refresh-progress-bar">
         <div class="refresh-progress-fill" id="refreshProgressFill" style="width:0%"></div>
     </div>
-    <div class="refresh-status" id="refreshStatus">准备中...</div>
+    <div class="refresh-status" id="refreshStatus">{{ _t('watchlist.refresh_preparing') if _t else 'Preparing...' }}</div>
     <div class="refresh-log" id="refreshLog"></div>
 </div>
 
 {# ============================================================ #}
-{# 股票列表表格                                                  #}
+{# Stock list table                                              #}
 {# ============================================================ #}
 <div class="card" style="padding:0; overflow-x:auto;">
     <table class="data-table" id="watchlistTable">
@@ -135,9 +135,9 @@
                     {% endif %}
                 </td>
 
-                {# 移除按钮 #}
+                {# Remove button #}
                 <td class="col-center">
-                    <button class="btn-remove-ticker" title="移除 {{ r.symbol }}"
+                    <button class="btn-remove-ticker" title="{{ _t('watchlist.remove_title', symbol=r.symbol) if _t else ('Remove ' ~ r.symbol) }}"
                             onclick="removeTicker('{{ r.symbol }}', '{{ r.name }}')">×</button>
                 </td>
             </tr>
@@ -148,37 +148,37 @@
 
 {% if not rows %}
 <div class="card">
-    <div class="empty-state">没有匹配的股票</div>
+    <div class="empty-state">{{ _t('watchlist.no_match') if _t else 'No matching stocks' }}</div>
 </div>
 {% endif %}
 
 {# ============================================================ #}
-{# 添加 Ticker 弹窗                                             #}
+{# Add Ticker Modal                                              #}
 {# ============================================================ #}
 <div id="addTickerModal" class="modal" style="display:none;">
     <div class="modal-header">
-        <h3>➕ 添加 Ticker</h3>
+        <h3>{{ _t('modal.add_title') if _t else '➕ Add Ticker' }}</h3>
         <button class="modal-close" onclick="closeModal()">&times;</button>
     </div>
     <div class="modal-body">
         <div class="modal-field">
-            <label for="tickerInput">Ticker 代码</label>
+            <label for="tickerInput">{{ _t('modal.ticker_code') if _t else 'Ticker Code' }}</label>
             <div class="ticker-input-row">
-                <input type="text" id="tickerInput" class="filter-input" placeholder="例如: AAPL, NVDA, TSLA"
+                <input type="text" id="tickerInput" class="filter-input" placeholder="{{ _t('modal.placeholder') if _t else 'e.g. AAPL, NVDA, TSLA' }}"
                        maxlength="10" autocomplete="off" style="flex:1;"
                        oninput="this.value=this.value.toUpperCase()" />
-                <button type="button" class="btn-check-ticker" id="btnCheck" onclick="checkTicker()">验证</button>
+                <button type="button" class="btn-check-ticker" id="btnCheck" onclick="checkTicker()">{{ _t('modal.btn_check') if _t else 'Check' }}</button>
             </div>
         </div>
 
-        {# 验证结果区 #}
+        {# Validation result area #}
         <div id="tickerValidation" class="ticker-validation" style="display:none;"></div>
 
-        {# 提交按钮 #}
+        {# Submit buttons #}
         <div class="modal-actions">
-            <button type="button" class="btn-cancel" onclick="closeModal()">取消</button>
+            <button type="button" class="btn-cancel" onclick="closeModal()">{{ _t('common.cancel') if _t else 'Cancel' }}</button>
             <button type="button" class="btn-confirm" id="btnAddConfirm" onclick="confirmAddTicker()" disabled>
-                添加到观察列表
+                {{ _t('modal.btn_add') if _t else 'Add to Watchlist' }}
             </button>
         </div>
     </div>
@@ -188,7 +188,7 @@
 
 {% block scripts %}
 <script>
-    // 表头点击排序
+    // Table header click sort
     initTableSort('watchlistTable');
 </script>
 {% endblock %}

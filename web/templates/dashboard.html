@@ -1,10 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Dashboard — Stock Tracker{% endblock %}
+{% block title %}{{ _t('dashboard.title') if _t else 'Dashboard — Stock Tracker' }}{% endblock %}
 
 {% block content %}
 
 {# ============================================================ #}
-{# Market Pulse Hero — 紧凑版                                    #}
+{# Market Pulse Hero                                             #}
 {# ============================================================ #}
 {% if pulse %}
 <div class="pulse-hero {{ pulse.regime }}">
@@ -13,7 +13,7 @@
         <div class="pulse-info">
             <h2>{{ pulse.regime | upper }} — {{ pulse.regime | regime_label }}</h2>
             <div class="pulse-meta">
-                <span>综合: <strong class="text-mono">{{ pulse.composite_score | fmt_score }}</strong>/100</span>
+                <span>{{ _t('dashboard.composite') if _t else 'Composite' }}: <strong class="text-mono">{{ pulse.composite_score | fmt_score }}</strong>/100</span>
                 {% if pulse.spy_price %}<span>SPY {{ pulse.spy_price | fmt_price }}</span>{% endif %}
                 {% if pulse.vix_value %}<span>VIX <strong class="text-mono">{{ "%.1f" | format(pulse.vix_value) }}</strong></span>{% endif %}
                 <span>{{ pulse.date }}</span>
@@ -35,12 +35,12 @@
 </div>
 {% else %}
 <div class="card">
-    <div class="empty-state">暂无 Market Pulse 数据。请先运行 <code>python scripts/market_pulse.py</code></div>
+    <div class="empty-state">{{ _t('dashboard.no_pulse') if _t else 'No Market Pulse data. Please run' }} <code>python scripts/market_pulse.py</code></div>
 </div>
 {% endif %}
 
 {# ============================================================ #}
-{# 四策略信号摘要 — 统一 Tab + 迷你表格                         #}
+{# Strategy Signals Summary — Tab + Mini Table                   #}
 {# ============================================================ #}
 {% set strategies = [
     ('stage2',  '🟢 Stage 2',       stage2_signals, stage2_total),
@@ -49,7 +49,7 @@
     ('bc',      '📋 Buying Checklist', bc_signals,  bc_total),
 ] %}
 <div class="card strategy-signals-card">
-    {# Tab 导航 #}
+    {# Tab Navigation #}
     <div class="strategy-tab-nav" role="tablist">
         {% for key, label, signals, total in strategies %}
         <button class="strategy-tab-btn {% if loop.first %}active{% endif %}"
@@ -62,7 +62,7 @@
         {% endfor %}
     </div>
 
-    {# Tab 内容面板 #}
+    {# Tab Content Panels #}
     {% for key, label, signals, total in strategies %}
     <div class="strategy-tab-panel {% if loop.first %}active{% endif %}" id="stab-{{ key }}" role="tabpanel">
         {% if signals %}
@@ -70,8 +70,8 @@
             <thead>
                 <tr>
                     <th class="col-ticker">Ticker</th>
-                    <th class="col-price">Price</th>
-                    <th class="col-score-header">Score</th>
+                    <th class="col-price">{{ _t('common.price') if _t else 'Price' }}</th>
+                    <th class="col-score-header">{{ _t('common.score') if _t else 'Score' }}</th>
                 </tr>
             </thead>
             <tbody>
@@ -102,24 +102,24 @@
         </table>
         {% if signals | length > 10 %}
         <div class="signal-show-all">
-            <a href="/watchlist?signal_only=true">查看全部 {{ signals | length }} 只 →</a>
+            <a href="/watchlist?signal_only=true">{{ _t('dashboard.view_all', count=signals|length) if _t else ('View all ' ~ signals|length ~ ' →') }}</a>
         </div>
         {% endif %}
         {% else %}
-        <div class="empty-state-sm">暂无信号</div>
+        <div class="empty-state-sm">{{ _t('dashboard.no_signals') if _t else 'No signals' }}</div>
         {% endif %}
     </div>
     {% endfor %}
 </div>
 
 {# ============================================================ #}
-{# 近期信号变化 + Market Pulse 走势 并排                         #}
+{# Recent Signal Changes + Market Pulse Trend                    #}
 {# ============================================================ #}
 <div class="grid-2col">
     {# Signal Changes #}
     <div class="card">
         <div class="card-header">
-            <span class="card-title">🔔 近期信号变化</span>
+            <span class="card-title">{{ _t('dashboard.signal_changes') if _t else '🔔 Recent Signal Changes' }}</span>
         </div>
         {% if signal_changes %}
         <ul class="timeline">
@@ -141,14 +141,14 @@
             {% endfor %}
         </ul>
         {% else %}
-        <div class="empty-state">暂无信号变化</div>
+        <div class="empty-state">{{ _t('dashboard.no_signal_changes') if _t else 'No signal changes' }}</div>
         {% endif %}
     </div>
 
-    {# Market Pulse 历史走势图 #}
+    {# Market Pulse Trend Chart #}
     <div class="card">
         <div class="card-header">
-            <span class="card-title">📈 Market Pulse 走势 (30天)</span>
+            <span class="card-title">{{ _t('dashboard.pulse_trend') if _t else '📈 Market Pulse Trend (30D)' }}</span>
         </div>
         <div class="chart-container">
             <canvas id="pulseChart"></canvas>
@@ -160,18 +160,16 @@
 
 {% block scripts %}
 <script>
-// 策略信号 Tab 切换
+// Strategy Tab Switch
 document.querySelectorAll('.strategy-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         const target = btn.dataset.target;
-        // 切换 tab 按钮状态
         btn.closest('.strategy-tab-nav').querySelectorAll('.strategy-tab-btn').forEach(b => {
             b.classList.remove('active');
             b.setAttribute('aria-selected', 'false');
         });
         btn.classList.add('active');
         btn.setAttribute('aria-selected', 'true');
-        // 切换面板
         btn.closest('.strategy-signals-card').querySelectorAll('.strategy-tab-panel').forEach(p => {
             p.classList.remove('active');
         });
@@ -179,7 +177,7 @@ document.querySelectorAll('.strategy-tab-btn').forEach(btn => {
     });
 });
 
-// Market Pulse 30天走势图
+// Market Pulse 30-Day Trend Chart
 const pulseData = {{ pulse_history | tojson }};
 if (pulseData && pulseData.length > 0) {
     const ctx = document.getElementById('pulseChart').getContext('2d');

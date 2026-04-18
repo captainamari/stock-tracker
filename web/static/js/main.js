@@ -1,10 +1,36 @@
 /**
- * Stock Tracker Dashboard — 前端交互逻辑
- * 表格排序 / 筛选 / 工具函数
+ * Stock Tracker Dashboard — Frontend interaction logic
+ * Table sorting / filtering / utility functions
+ *
+ * i18n: Uses window.__i18n (language pack injected from server)
+ *       _t(key, replacements) for translations
  */
 
 // ============================================================
-// 表格排序
+// i18n helper — reads from window.__i18n (set by base.html)
+// ============================================================
+function _t(key, replacements) {
+    const pack = window.I18N || {};
+    const parts = key.split('.');
+    let value = pack;
+    for (const p of parts) {
+        if (value && typeof value === 'object' && p in value) {
+            value = value[p];
+        } else {
+            return key; // fallback: return key itself
+        }
+    }
+    if (typeof value !== 'string') return key;
+    if (replacements) {
+        for (const [k, v] of Object.entries(replacements)) {
+            value = value.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+        }
+    }
+    return value;
+}
+
+// ============================================================
+// Table sorting
 // ============================================================
 function initTableSort(tableId) {
     const table = document.getElementById(tableId);
@@ -16,14 +42,12 @@ function initTableSort(tableId) {
     headers.forEach(th => {
         th.addEventListener('click', () => {
             const col = th.dataset.sort;
-            const asc = currentSort.col === col ? !currentSort.asc : false; // 默认降序
+            const asc = currentSort.col === col ? !currentSort.asc : false;
 
-            // 更新排序指示器
             headers.forEach(h => h.classList.remove('sort-asc', 'sort-desc'));
             th.classList.add(asc ? 'sort-asc' : 'sort-desc');
             currentSort = { col, asc };
 
-            // 排序行
             const tbody = table.querySelector('tbody');
             const rows = Array.from(tbody.querySelectorAll('tr'));
 
@@ -31,14 +55,12 @@ function initTableSort(tableId) {
                 let va = a.dataset[col] || '';
                 let vb = b.dataset[col] || '';
 
-                // 尝试数字排序
                 const na = parseFloat(va);
                 const nb = parseFloat(vb);
                 if (!isNaN(na) && !isNaN(nb)) {
                     return asc ? na - nb : nb - na;
                 }
 
-                // 字符串排序
                 return asc ? va.localeCompare(vb) : vb.localeCompare(va);
             });
 
@@ -48,7 +70,7 @@ function initTableSort(tableId) {
 }
 
 // ============================================================
-// 工具函数
+// Utility functions
 // ============================================================
 function formatNumber(val, decimals = 1) {
     if (val === null || val === undefined) return '—';
@@ -62,14 +84,13 @@ function formatPct(val) {
 }
 
 // ============================================================
-// Modal 弹窗控制
+// Modal control
 // ============================================================
 function openAddTickerModal() {
     const modal = document.getElementById('addTickerModal');
     const overlay = document.getElementById('modalOverlay');
     if (!modal || !overlay) return;
 
-    // 重置状态
     const input = document.getElementById('tickerInput');
     const validation = document.getElementById('tickerValidation');
     const btnConfirm = document.getElementById('btnAddConfirm');
@@ -77,7 +98,6 @@ function openAddTickerModal() {
     if (validation) { validation.style.display = 'none'; validation.innerHTML = ''; }
     if (btnConfirm) btnConfirm.disabled = true;
 
-    // 清除缓存的验证数据
     window._tickerValidationData = null;
 
     modal.style.display = 'block';
@@ -92,13 +112,13 @@ function closeModal() {
     if (overlay) overlay.style.display = 'none';
 }
 
-// ESC 关闭 modal
+// ESC to close modal
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeModal();
 });
 
 // ============================================================
-// Ticker 验证
+// Ticker validation
 // ============================================================
 async function checkTicker() {
     const input = document.getElementById('tickerInput');
@@ -108,36 +128,34 @@ async function checkTicker() {
 
     const symbol = (input ? input.value.trim().toUpperCase() : '');
     if (!symbol) {
-        showValidation('error', '请输入 ticker 代码');
+        showValidation('error', _t('js.enter_ticker'));
         return;
     }
 
-    // loading 状态
+    // loading state
     btnCheck.disabled = true;
-    btnCheck.textContent = '验证中…';
+    btnCheck.textContent = _t('modal.btn_checking');
     btnConfirm.disabled = true;
     window._tickerValidationData = null;
-    showValidation('loading', `正在验证 "${symbol}"…`);
+    showValidation('loading', _t('js.checking_ticker', { symbol }));
 
     try {
         const resp = await fetch(`/api/tickers/check/${encodeURIComponent(symbol)}`);
         const data = await resp.json();
 
         if (!resp.ok) {
-            showValidation('error', data.detail || '验证请求失败');
+            showValidation('error', data.detail || _t('js.check_failed'));
             return;
         }
 
         if (data.exists && data.enabled) {
-            // 已存在且启用
-            showValidation('warn', data.message || `"${symbol}" 已在观察列表中`);
+            showValidation('warn', data.message || _t('js.already_in_list', { symbol }));
             return;
         }
 
         if (data.exists && !data.enabled) {
-            // 曾被移除，可恢复
             const info = `<strong>${data.symbol}</strong> — ${data.name || ''}`;
-            const extra = data.has_price_data ? '<br><span class="text-secondary">已有历史数据，添加后将快速恢复</span>' : '';
+            const extra = data.has_price_data ? `<br><span class="text-secondary">${_t('js.has_history')}</span>` : '';
             showValidation('restore', `${info}<br>${data.message || ''}${extra}`);
             window._tickerValidationData = data;
             btnConfirm.disabled = false;
@@ -145,24 +163,23 @@ async function checkTicker() {
         }
 
         if (data.valid) {
-            // 全新 ticker 验证通过
             let html = `<strong>${data.symbol}</strong>`;
             if (data.name) html += ` — ${data.name}`;
-            if (data.sector) html += `<br><span class="text-secondary">板块: ${data.sector}</span>`;
-            if (data.exchange) html += ` · <span class="text-secondary">交易所: ${data.exchange}</span>`;
-            if (data.market_price) html += `<br><span class="text-secondary">当前价格: $${Number(data.market_price).toFixed(2)}</span>`;
+            if (data.sector) html += `<br><span class="text-secondary">${_t('js.sector_label', { sector: data.sector })}</span>`;
+            if (data.exchange) html += ` · <span class="text-secondary">${_t('js.exchange_label', { exchange: data.exchange })}</span>`;
+            if (data.market_price) html += `<br><span class="text-secondary">${_t('js.current_price', { price: Number(data.market_price).toFixed(2) })}</span>`;
             showValidation('success', html);
             window._tickerValidationData = data;
             btnConfirm.disabled = false;
         } else {
-            showValidation('error', data.error || '验证失败');
+            showValidation('error', data.error || _t('js.check_error'));
         }
 
     } catch (err) {
-        showValidation('error', `网络错误: ${err.message}`);
+        showValidation('error', _t('js.network_error', { msg: err.message }));
     } finally {
         btnCheck.disabled = false;
-        btnCheck.textContent = '验证';
+        btnCheck.textContent = _t('modal.btn_check');
     }
 }
 
@@ -175,7 +192,7 @@ function showValidation(type, html) {
 }
 
 // ============================================================
-// 确认添加 Ticker
+// Confirm add ticker
 // ============================================================
 async function confirmAddTicker() {
     const btnConfirm = document.getElementById('btnAddConfirm');
@@ -183,8 +200,8 @@ async function confirmAddTicker() {
     if (!data) return;
 
     btnConfirm.disabled = true;
-    btnConfirm.textContent = '添加中…正在拉取数据并计算策略';
-    showValidation('loading', `正在为 "${data.symbol}" 拉取价格数据并运行策略分析，请稍候（约 5-10 秒）…`);
+    btnConfirm.textContent = _t('modal.btn_adding');
+    showValidation('loading', _t('js.adding_msg', { symbol: data.symbol }));
 
     try {
         const resp = await fetch('/api/tickers', {
@@ -199,36 +216,35 @@ async function confirmAddTicker() {
         const result = await resp.json();
 
         if (!resp.ok) {
-            showValidation('error', result.detail || '添加失败');
+            showValidation('error', result.detail || _t('js.add_failed'));
             btnConfirm.disabled = false;
-            btnConfirm.textContent = '添加到观察列表';
+            btnConfirm.textContent = _t('modal.btn_add');
             return;
         }
 
-        // 成功
+        // success
         showValidation('success',
-            `✅ ${result.message || `"${data.symbol}" 已成功添加`}<br>` +
-            '<span class="text-secondary">页面即将刷新…</span>'
+            `${_t('js.add_success', { msg: result.message || `"${data.symbol}" added` })}<br>` +
+            `<span class="text-secondary">${_t('js.page_refreshing')}</span>`
         );
 
-        // 延迟刷新页面
         setTimeout(() => {
             window.location.reload();
         }, 1200);
 
     } catch (err) {
-        showValidation('error', `添加失败: ${err.message}`);
+        showValidation('error', `${_t('js.add_failed')}: ${err.message}`);
         btnConfirm.disabled = false;
-        btnConfirm.textContent = '添加到观察列表';
+        btnConfirm.textContent = _t('modal.btn_add');
     }
 }
 
 // ============================================================
-// 移除 Ticker
+// Remove ticker
 // ============================================================
 async function removeTicker(symbol, name) {
     const displayName = name ? `${symbol} (${name})` : symbol;
-    if (!confirm(`确定要从观察列表中移除 ${displayName} 吗？\n\n注: 仅隐藏显示，不会删除历史数据。`)) {
+    if (!confirm(_t('js.confirm_remove', { name: displayName }))) {
         return;
     }
 
@@ -239,11 +255,11 @@ async function removeTicker(symbol, name) {
         const result = await resp.json();
 
         if (!resp.ok) {
-            alert(result.detail || '移除失败');
+            alert(result.detail || _t('js.remove_failed'));
             return;
         }
 
-        // 从表格中移除行（带动画）
+        // Remove row with animation
         const row = document.querySelector(`tr[data-symbol="${symbol}"]`);
         if (row) {
             row.style.transition = 'opacity 0.3s, transform 0.3s';
@@ -252,12 +268,12 @@ async function removeTicker(symbol, name) {
             setTimeout(() => row.remove(), 300);
         }
     } catch (err) {
-        alert(`移除失败: ${err.message}`);
+        alert(`${_t('js.remove_failed')}: ${err.message}`);
     }
 }
 
 // ============================================================
-// 刷新价格 (SSE 流式)
+// Refresh prices (SSE streaming)
 // ============================================================
 let _refreshInProgress = false;
 
@@ -273,13 +289,13 @@ async function refreshPrices() {
     const fill = document.getElementById('refreshProgressFill');
     const closeBtn = document.getElementById('refreshCloseBtn');
 
-    // 重置 UI
+    // Reset UI
     btn.disabled = true;
     btn.classList.add('refreshing');
-    btn.textContent = '🔄 更新中…';
+    btn.textContent = _t('watchlist.refreshing');
     panel.style.display = 'block';
-    title.textContent = '🔄 正在更新价格...';
-    status.textContent = '准备中...';
+    title.textContent = _t('watchlist.refresh_panel_title');
+    status.textContent = _t('watchlist.refresh_preparing');
     log.innerHTML = '';
     fill.style.width = '0%';
     fill.className = 'refresh-progress-fill';
@@ -289,7 +305,7 @@ async function refreshPrices() {
         const resp = await fetch('/api/prices/refresh', { method: 'POST' });
 
         if (!resp.ok) {
-            throw new Error(`服务器错误: ${resp.status}`);
+            throw new Error(_t('js.server_error', { status: resp.status }));
         }
 
         const reader = resp.body.getReader();
@@ -302,7 +318,7 @@ async function refreshPrices() {
 
             buffer += decoder.decode(value, { stream: true });
 
-            // 解析 SSE 事件
+            // Parse SSE events
             const lines = buffer.split('\n');
             buffer = '';
 
@@ -317,15 +333,13 @@ async function refreshPrices() {
                         const data = JSON.parse(line.slice(6));
                         handleRefreshEvent(eventType, data, { status, log, fill, title });
                     } catch (e) {
-                        // JSON 不完整，放回 buffer
                         buffer = lines.slice(i).join('\n');
                         break;
                     }
-                    eventType = 'progress'; // reset
+                    eventType = 'progress';
                 } else if (line === '') {
-                    // 空行 = 事件分隔符
+                    // empty line = event separator
                 } else {
-                    // 可能是不完整的行
                     buffer = lines.slice(i).join('\n');
                     break;
                 }
@@ -333,13 +347,13 @@ async function refreshPrices() {
         }
 
     } catch (err) {
-        status.textContent = `❌ 刷新失败: ${err.message}`;
+        status.textContent = _t('js.refresh_failed', { msg: err.message });
         fill.className = 'refresh-progress-fill has-errors';
     } finally {
         _refreshInProgress = false;
         btn.disabled = false;
         btn.classList.remove('refreshing');
-        btn.textContent = '🔄 更新价格';
+        btn.textContent = _t('watchlist.refresh_prices');
         closeBtn.style.display = 'block';
     }
 }
@@ -350,19 +364,19 @@ function handleRefreshEvent(eventType, data, ui) {
         ui.fill.style.width = pct + '%';
         ui.status.textContent = `${data.current} / ${data.total} — ${data.symbol} (${data.name || ''})`;
 
-        // 添加日志行
+        // Add log entry
         const icon = data.status === 'updated' ? '✅' :
                      data.status === 'skipped' ? '⏭️' : '❌';
         const cls = data.status === 'updated' ? 'log-updated' :
                     data.status === 'skipped' ? 'log-skipped' : 'log-error';
         let detail = '';
         if (data.status === 'updated') {
-            detail = `+${data.new_rows} 条`;
-            if (data.strategies_recalculated) detail += ' · 已重算策略';
+            detail = _t('js.updated_rows', { count: data.new_rows });
+            if (data.strategies_recalculated) detail += ' · ' + _t('js.strategies_recalculated');
         } else if (data.status === 'error') {
-            detail = data.error || '未知错误';
+            detail = data.error || _t('js.unknown_error');
         } else {
-            detail = '已是最新';
+            detail = _t('js.already_latest');
         }
 
         const logItem = document.createElement('div');
@@ -375,25 +389,25 @@ function handleRefreshEvent(eventType, data, ui) {
         ui.fill.style.width = '100%';
         ui.fill.className = 'refresh-progress-fill ' + (data.errors > 0 ? 'has-errors' : 'done');
         ui.status.textContent =
-            `✅ 完成: ${data.updated} 只已更新 / ${data.skipped} 只已跳过` +
-            (data.errors > 0 ? ` / ${data.errors} 只失败` : '') +
-            ` / ${data.strategies_recalculated} 只重算了策略`;
+            _t('js.refresh_done', { updated: data.updated, skipped: data.skipped }) +
+            (data.errors > 0 ? _t('js.refresh_failed_count', { errors: data.errors }) : '') +
+            _t('js.refresh_recalc', { count: data.strategies_recalculated });
 
         const titleEl = document.getElementById('refreshTitle');
-        titleEl.textContent = data.errors > 0 ? '⚠️ 价格更新完成 (部分失败)' : '✅ 价格更新完成';
+        titleEl.textContent = data.errors > 0 ? _t('js.refresh_title_partial') : _t('js.refresh_title_done');
 
-        // 如果有更新，提示刷新页面
+        // If updated, prompt to refresh page
         if (data.updated > 0) {
             const hint = document.createElement('div');
             hint.style.cssText = 'margin-top:8px;font-size:13px;color:var(--blue);cursor:pointer;';
-            hint.textContent = '🔄 点击此处刷新页面查看最新数据';
+            hint.textContent = _t('js.click_refresh');
             hint.onclick = () => window.location.reload();
             ui.log.appendChild(hint);
         }
 
     } else if (eventType === 'error') {
         ui.fill.className = 'refresh-progress-fill has-errors';
-        ui.status.textContent = `❌ 错误: ${data.error}`;
+        ui.status.textContent = _t('js.error_prefix', { msg: data.error });
     }
 }
 
@@ -411,17 +425,17 @@ function closeRefreshPanel() {
 }
 
 // ============================================================
-// 页面加载完成后的初始化
+// Page load initialization
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
-    // 为所有带 data-sort 的表格自动初始化排序
+    // Auto-init sorting for all data-tables
     document.querySelectorAll('table.data-table').forEach(table => {
         if (table.id) {
             initTableSort(table.id);
         }
     });
 
-    // Enter 键快捷触发验证
+    // Enter key to trigger ticker check
     const tickerInput = document.getElementById('tickerInput');
     if (tickerInput) {
         tickerInput.addEventListener('keydown', (e) => {

@@ -7,7 +7,7 @@
 {# Ticker Header                                                 #}
 {# ============================================================ #}
 <div class="ticker-header">
-    <a href="/watchlist" class="back-link">← 返回 Watchlist</a>
+    <a href="/watchlist" class="back-link">{{ _t("ticker_detail.back") }}</a>
     <h1>
         {{ symbol }}
         <span style="font-weight:400; font-size:18px; color:var(--text-secondary);">— {{ ticker.name }}</span>
@@ -30,16 +30,16 @@
 </div>
 
 {# ============================================================ #}
-{# 四策略状态卡片 — 紧凑 4 列                                    #}
+{# Strategy Status Cards — Compact 4 columns                     #}
 {# ============================================================ #}
 <div class="strategy-grid-4">
-    {# Stage 2 卡片 #}
+    {# Stage 2 Card #}
     <div class="strategy-mini-card {% if s2_state and s2_state.is_active %}active{% else %}inactive{% endif %}">
         <div class="mini-card-top">
             <span class="mini-card-icon">🟢</span>
             <span class="mini-card-name">Stage 2</span>
             {% if s2_state and s2_state.is_active %}
-            <span class="mini-status on">活跃</span>
+            <span class="mini-status on">{{ _t("ticker_detail.active") }}</span>
             {% else %}
             <span class="mini-status off">—</span>
             {% endif %}
@@ -47,24 +47,24 @@
         {% if s2_result %}
         <div class="mini-card-body">
             <div class="mini-score {{ s2_result.score | score_color }}">{{ s2_result.score | fmt_score }}</div>
-            <div class="mini-meta">{{ s2_result.passed }}/{{ s2_result.total }} 条件</div>
+            <div class="mini-meta">{{ s2_result.passed }}/{{ s2_result.total }} {{ _t("common.conditions") }}</div>
             {% if s2_state and s2_state.is_active and s2_days is not none %}
-            <div class="mini-meta">持续 {{ s2_days }}天</div>
+            <div class="mini-meta">{{ _t("ticker_detail.held_days", days=s2_days) }}</div>
             {% endif %}
         </div>
-        <button class="btn-expand-detail" onclick="toggleConditions('s2')">展开明细 ▸</button>
+        <button class="btn-expand-detail" onclick="toggleConditions('s2')">{{ _t("ticker_detail.expand") }}</button>
         {% else %}
-        <div class="mini-card-body"><span class="text-dim">无数据</span></div>
+        <div class="mini-card-body"><span class="text-dim">{{ _t("common.no_data") }}</span></div>
         {% endif %}
     </div>
 
-    {# VCP 卡片 #}
+    {# VCP Card #}
     <div class="strategy-mini-card {% if vcp_state and vcp_state.is_active %}active{% else %}inactive{% endif %}">
         <div class="mini-card-top">
             <span class="mini-card-icon">🎯</span>
             <span class="mini-card-name">VCP</span>
             {% if vcp_state and vcp_state.is_active %}
-            <span class="mini-status on">活跃</span>
+            <span class="mini-status on">{{ _t("ticker_detail.active") }}</span>
             {% else %}
             <span class="mini-status off">—</span>
             {% endif %}
@@ -72,25 +72,25 @@
         {% if vcp_result %}
         <div class="mini-card-body">
             <div class="mini-score {{ vcp_result.score | score_color }}">{{ vcp_result.score | fmt_score }}</div>
-            <div class="mini-meta">{{ vcp_result.passed }}/{{ vcp_result.total }} 条件</div>
+            <div class="mini-meta">{{ vcp_result.passed }}/{{ vcp_result.total }} {{ _t("common.conditions") }}</div>
         </div>
-        <button class="btn-expand-detail" onclick="toggleConditions('vcp')">展开明细 ▸</button>
+        <button class="btn-expand-detail" onclick="toggleConditions('vcp')">{{ _t("ticker_detail.expand") }}</button>
         {% else %}
         <div class="mini-card-body">
             <span class="text-dim">
-                {% if not s2_state or not s2_state.is_active %}不在 Stage 2{% else %}无数据{% endif %}
+                {% if not s2_state or not s2_state.is_active %}{{ _t("ticker_detail.not_in_stage2") }}{% else %}{{ _t("common.no_data") }}{% endif %}
             </span>
         </div>
         {% endif %}
     </div>
 
-    {# Bottom Fisher 卡片 #}
+    {# Bottom Fisher Card #}
     <div class="strategy-mini-card {% if bf_state and bf_state.is_active %}active{% else %}inactive{% endif %}">
         <div class="mini-card-top">
             <span class="mini-card-icon">🔻</span>
             <span class="mini-card-name">Bottom Fisher</span>
             {% if bf_state and bf_state.is_active %}
-            <span class="mini-status on">活跃</span>
+            <span class="mini-status on">{{ _t("ticker_detail.active") }}</span>
             {% else %}
             <span class="mini-status off">—</span>
             {% endif %}
@@ -98,21 +98,21 @@
         {% if bf_result %}
         <div class="mini-card-body">
             <div class="mini-score {{ bf_result.score | score_color }}">{{ bf_result.score | fmt_score }}</div>
-            <div class="mini-meta">{{ bf_result.passed }}/{{ bf_result.total }} 条件</div>
+            <div class="mini-meta">{{ bf_result.passed }}/{{ bf_result.total }} {{ _t("common.conditions") }}</div>
         </div>
-        <button class="btn-expand-detail" onclick="toggleConditions('bf')">展开明细 ▸</button>
+        <button class="btn-expand-detail" onclick="toggleConditions('bf')">{{ _t("ticker_detail.expand") }}</button>
         {% else %}
-        <div class="mini-card-body"><span class="text-dim">无数据</span></div>
+        <div class="mini-card-body"><span class="text-dim">{{ _t("common.no_data") }}</span></div>
         {% endif %}
     </div>
 
-    {# Buying Checklist 卡片 #}
+    {# Buying Checklist Card #}
     <div class="strategy-mini-card {% if bc_state and bc_state.is_active %}active{% else %}inactive{% endif %}">
         <div class="mini-card-top">
             <span class="mini-card-icon">📋</span>
             <span class="mini-card-name">Buying Checklist</span>
             {% if bc_state and bc_state.is_active %}
-            <span class="mini-status on">活跃</span>
+            <span class="mini-status on">{{ _t("ticker_detail.active") }}</span>
             {% else %}
             <span class="mini-status off">—</span>
             {% endif %}
@@ -120,7 +120,7 @@
         {% if bc_result %}
         <div class="mini-card-body">
             <div class="mini-score {{ bc_result.score | score_color }}">{{ bc_result.score | fmt_score }}</div>
-            <div class="mini-meta">{{ bc_result.passed }}/{{ bc_result.total }} 条件</div>
+            <div class="mini-meta">{{ bc_result.passed }}/{{ bc_result.total }} {{ _t("common.conditions") }}</div>
             {% if bc_result.metrics and bc_result.metrics.weekly_impulse %}
             <div class="mini-meta">
                 {% if bc_result.metrics.weekly_impulse == 'green' %}🟢{% elif bc_result.metrics.weekly_impulse == 'red' %}🔴{% else %}🔵{% endif %}
@@ -128,15 +128,15 @@
             </div>
             {% endif %}
         </div>
-        <button class="btn-expand-detail" onclick="toggleConditions('bc')">展开明细 ▸</button>
+        <button class="btn-expand-detail" onclick="toggleConditions('bc')">{{ _t("ticker_detail.expand") }}</button>
         {% else %}
-        <div class="mini-card-body"><span class="text-dim">无数据</span></div>
+        <div class="mini-card-body"><span class="text-dim">{{ _t("common.no_data") }}</span></div>
         {% endif %}
     </div>
 </div>
 
 {# ============================================================ #}
-{# 可折叠条件明细面板                                            #}
+{# Collapsible Condition Detail Panels                           #}
 {# ============================================================ #}
 {% set strategies = [
     ('s2', 'Stage 2', s2_result),
@@ -149,9 +149,9 @@
 {% if result and result.conditions %}
 <div id="conditions-{{ key }}" class="conditions-panel" style="display:none;">
     <div class="conditions-panel-header">
-        <span class="card-title">📋 {{ label }} — 条件明细</span>
-        <span class="card-subtitle">{{ result.passed }}/{{ result.total }} 条件满足</span>
-        <button class="btn-collapse" onclick="toggleConditions('{{ key }}')">收起 ▾</button>
+        <span class="card-title">{{ _t("ticker_detail.conditions_detail", label=label) }}</span>
+        <span class="card-subtitle">{{ _t("ticker_detail.conditions_met", passed=result.passed, total=result.total) }}</span>
+        <button class="btn-collapse" onclick="toggleConditions('{{ key }}')">{{ _t("ticker_detail.collapse") }}</button>
     </div>
     <div class="conditions-grid">
         {% for cond_key, passed in result.conditions.items() %}
@@ -181,40 +181,40 @@
 {% endfor %}
 
 {# ============================================================ #}
-{# 四大技术指标 — Tab 导航                                       #}
+{# Technical Indicators — Tab Navigation                         #}
 {# ============================================================ #}
 {% if tech %}
 <div class="card tech-indicators-card">
     <div class="tab-nav">
-        <button class="tab-btn active" onclick="switchTab(event, 'tab-ma')">📈 均线系统</button>
-        <button class="tab-btn" onclick="switchTab(event, 'tab-momentum')">⚡ 动量指标</button>
-        <button class="tab-btn" onclick="switchTab(event, 'tab-sr')">🎯 支撑阻力</button>
-        <button class="tab-btn" onclick="switchTab(event, 'tab-fib')">🔢 斐波那契</button>
+        <button class="tab-btn active" onclick="switchTab(event, 'tab-ma')">{{ _t("ticker_detail.tab_ma") }}</button>
+        <button class="tab-btn" onclick="switchTab(event, 'tab-momentum')">{{ _t("ticker_detail.tab_momentum") }}</button>
+        <button class="tab-btn" onclick="switchTab(event, 'tab-sr')">{{ _t("ticker_detail.tab_sr") }}</button>
+        <button class="tab-btn" onclick="switchTab(event, 'tab-fib')">{{ _t("ticker_detail.tab_fib") }}</button>
     </div>
 
-    {# ---- Tab 1: 均线系统 ---- #}
+    {# ---- Tab 1: Moving Averages ---- #}
     <div id="tab-ma" class="tab-panel active">
         {% set ma = tech.get('moving_averages', {}) %}
         {% if ma %}
         <div class="tech-section">
-            {# 均线排列状态 #}
+            {# MA Arrangement #}
             {% if ma.arrangement %}
             <div class="tech-status-bar {% if ma.arrangement_type == 'bullish' %}bullish{% elif ma.arrangement_type == 'bearish' %}bearish{% else %}neutral{% endif %}">
-                <span class="tech-status-label">均线排列</span>
+                <span class="tech-status-label">{{ _t("ticker_detail.ma_arrangement") }}</span>
                 <span class="tech-status-value">{{ ma.arrangement }}</span>
-                {% if ma.golden_cross %}<span class="tech-badge bullish">🔥 金叉</span>{% endif %}
-                {% if ma.death_cross %}<span class="tech-badge bearish">💀 死叉</span>{% endif %}
+                {% if ma.golden_cross %}<span class="tech-badge bullish">{{ _t("ticker_detail.golden_cross") }}</span>{% endif %}
+                {% if ma.death_cross %}<span class="tech-badge bearish">{{ _t("ticker_detail.death_cross") }}</span>{% endif %}
             </div>
             {% endif %}
 
-            {# 均线数值表格 #}
+            {# MA Values Table #}
             <div class="tech-grid-3">
                 {% for key, val in ma.ma_values.items() %}
                 <div class="tech-metric">
                     <span class="tech-metric-label">{{ key }}</span>
                     <span class="tech-metric-value">${{ "%.2f" | format(val) }}</span>
                     <span class="tech-metric-tag {% if ma.position.get(key) == 'above' %}text-green{% else %}text-red{% endif %}">
-                        {% if ma.position.get(key) == 'above' %}▲ 上方{% else %}▼ 下方{% endif %}
+                        {% if ma.position.get(key) == 'above' %}{{ _t("ticker_detail.above") }}{% else %}{{ _t("ticker_detail.below") }}{% endif %}
                     </span>
                 </div>
                 {% endfor %}
@@ -233,18 +233,18 @@
             </div>
         </div>
         {% else %}
-        <div class="empty-state-sm">数据不足，无法计算均线</div>
+        <div class="empty-state-sm">{{ _t("ticker_detail.insufficient_ma") }}</div>
         {% endif %}
     </div>
 
-    {# ---- Tab 2: 动量指标 ---- #}
+    {# ---- Tab 2: Momentum ---- #}
     <div id="tab-momentum" class="tab-panel">
         {% set mom = tech.get('momentum', {}) %}
         {% if mom %}
         <div class="tech-section">
-            {# RSI 区域 #}
+            {# RSI #}
             <div class="tech-subsection">
-                <h4 class="tech-subtitle">RSI 相对强弱</h4>
+                <h4 class="tech-subtitle">{{ _t("ticker_detail.rsi_title") }}</h4>
                 <div class="tech-grid-2">
                     {% if mom.rsi6 %}
                     <div class="tech-gauge">
@@ -279,7 +279,7 @@
 
             {# Stochastic & MACD #}
             <div class="tech-subsection">
-                <h4 class="tech-subtitle">Stochastic & MACD</h4>
+                <h4 class="tech-subtitle">{{ _t("ticker_detail.stoch_macd_title") }}</h4>
                 <div class="tech-grid-2">
                     {% if mom.stoch %}
                     <div class="tech-data-block">
@@ -323,7 +323,7 @@
 
             {# ADX & HV #}
             <div class="tech-subsection">
-                <h4 class="tech-subtitle">趋势强度 & 波动率</h4>
+                <h4 class="tech-subtitle">{{ _t("ticker_detail.trend_volatility_title") }}</h4>
                 <div class="tech-grid-2">
                     {% if mom.adx %}
                     <div class="tech-data-block">
@@ -338,7 +338,7 @@
                             <span>DI−</span><span class="text-mono text-red">{{ mom.adx.DI_Minus }}</span>
                         </div>
                         <div class="data-block-row">
-                            <span>方向</span><span>{{ mom.adx.direction }}</span>
+                            <span>{{ _t("ticker_detail.direction") }}</span><span>{{ mom.adx.direction }}</span>
                         </div>
                     </div>
                     {% endif %}
@@ -347,7 +347,7 @@
                         <div class="data-block-title">Historical Volatility</div>
                         <div class="hv-display">
                             <span class="hv-value">{{ mom.hv30 }}%</span>
-                            <span class="hv-label">HV30 (年化)</span>
+                            <span class="hv-label">{{ _t("ticker_detail.hv_annualized") }}</span>
                         </div>
                     </div>
                     {% endif %}
@@ -355,34 +355,34 @@
             </div>
         </div>
         {% else %}
-        <div class="empty-state-sm">数据不足，无法计算动量指标</div>
+        <div class="empty-state-sm">{{ _t("ticker_detail.insufficient_momentum") }}</div>
         {% endif %}
     </div>
 
-    {# ---- Tab 3: 支撑阻力 ---- #}
+    {# ---- Tab 3: Support & Resistance ---- #}
     <div id="tab-sr" class="tab-panel">
         {% set sr = tech.get('support_resistance', {}) %}
         {% if sr %}
         <div class="tech-section">
-            {# 布林带 #}
+            {# Bollinger Bands #}
             {% if sr.bollinger %}
             <div class="tech-subsection">
-                <h4 class="tech-subtitle">布林带 (Bollinger Bands)</h4>
+                <h4 class="tech-subtitle">{{ _t("ticker_detail.bollinger_title") }}</h4>
                 <div class="bollinger-visual">
                     <div class="bb-row bb-upper">
-                        <span class="bb-label">上轨</span>
+                        <span class="bb-label">{{ _t("ticker_detail.upper_band") }}</span>
                         <span class="bb-val">${{ "%.2f" | format(sr.bollinger.upper) }}</span>
                     </div>
                     <div class="bb-row bb-mid">
-                        <span class="bb-label">中轨</span>
+                        <span class="bb-label">{{ _t("ticker_detail.mid_band") }}</span>
                         <span class="bb-val">${{ "%.2f" | format(sr.bollinger.mid) }}</span>
                     </div>
                     <div class="bb-row bb-lower">
-                        <span class="bb-label">下轨</span>
+                        <span class="bb-label">{{ _t("ticker_detail.lower_band") }}</span>
                         <span class="bb-val">${{ "%.2f" | format(sr.bollinger.lower) }}</span>
                     </div>
                     <div class="bb-info">
-                        <span>宽度: {{ sr.bollinger.width_pct }}%</span>
+                        <span>{{ _t("ticker_detail.width") }}: {{ sr.bollinger.width_pct }}%</span>
                         <span class="{% if '超买' in sr.bollinger.position %}text-red{% elif '超卖' in sr.bollinger.position %}text-green{% else %}text-secondary{% endif %}">
                             {{ sr.bollinger.position }}
                         </span>
@@ -391,18 +391,18 @@
             </div>
             {% endif %}
 
-            {# VWAP & 统计区间 #}
+            {# VWAP & Statistical Range #}
             <div class="tech-subsection">
-                <h4 class="tech-subtitle">VWAP & 统计区间</h4>
+                <h4 class="tech-subtitle">{{ _t("ticker_detail.vwap_stat_title") }}</h4>
                 <div class="tech-grid-2">
                     <div class="tech-data-block">
                         <div class="data-block-title">VWAP(20)</div>
                         <div class="data-block-row">
-                            <span>价格</span>
+                            <span>{{ _t("ticker_detail.vwap_price") }}</span>
                             <span class="text-mono">${{ "%.2f" | format(sr.vwap20) }}</span>
                         </div>
                         <div class="data-block-row">
-                            <span>信号</span>
+                            <span>{{ _t("ticker_detail.vwap_signal") }}</span>
                             <span class="{% if '多头' in sr.vwap_signal %}text-green{% else %}text-red{% endif %}">
                                 {{ sr.vwap_signal }}
                             </span>
@@ -410,7 +410,7 @@
                     </div>
                     {% if sr.stat_levels %}
                     <div class="tech-data-block">
-                        <div class="data-block-title">统计区间 (30D)</div>
+                        <div class="data-block-title">{{ _t("ticker_detail.stat_range_title") }}</div>
                         {% for lbl, val in sr.stat_levels.items() %}
                         <div class="data-block-row">
                             <span>{{ lbl }}</span>
@@ -422,10 +422,10 @@
                 </div>
             </div>
 
-            {# 52周高低 #}
+            {# 52-Week Range #}
             {% if sr['52week'] %}
             <div class="tech-subsection">
-                <h4 class="tech-subtitle">52周区间</h4>
+                <h4 class="tech-subtitle">{{ _t("ticker_detail.week52_title") }}</h4>
                 <div class="range-visual">
                     <div class="range-endpoints">
                         <span class="range-low">${{ "%.2f" | format(sr['52week'].low) }}</span>
@@ -438,34 +438,34 @@
                         </div>
                     </div>
                     <div class="range-pcts">
-                        <span class="text-green">距低 +{{ sr['52week'].pct_from_low }}%</span>
-                        <span class="text-red">距高 {{ sr['52week'].pct_from_high }}%</span>
+                        <span class="text-green">{{ _t("ticker_detail.from_low", pct=sr['52week'].pct_from_low) }}</span>
+                        <span class="text-red">{{ _t("ticker_detail.from_high", pct=sr['52week'].pct_from_high) }}</span>
                     </div>
                 </div>
             </div>
             {% endif %}
 
-            {# 关键支撑阻力汇总 #}
+            {# Key Support & Resistance #}
             {% if sr.key_supports or sr.key_resistances %}
             <div class="tech-subsection">
-                <h4 class="tech-subtitle">关键价位</h4>
+                <h4 class="tech-subtitle">{{ _t("ticker_detail.key_levels") }}</h4>
                 <div class="tech-grid-2">
                     <div class="level-list">
-                        <div class="level-title text-green">🛡️ 支撑位</div>
+                        <div class="level-title text-green">{{ _t("ticker_detail.support_levels") }}</div>
                         {% for s in sr.key_supports %}
                         <div class="level-item support">${{ "%.2f" | format(s) }}</div>
                         {% endfor %}
                         {% if not sr.key_supports %}
-                        <div class="text-dim" style="font-size:12px">无明显支撑</div>
+                        <div class="text-dim" style="font-size:12px">{{ _t("ticker_detail.no_support") }}</div>
                         {% endif %}
                     </div>
                     <div class="level-list">
-                        <div class="level-title text-red">🚧 阻力位</div>
+                        <div class="level-title text-red">{{ _t("ticker_detail.resistance_levels") }}</div>
                         {% for r in sr.key_resistances %}
                         <div class="level-item resistance">${{ "%.2f" | format(r) }}</div>
                         {% endfor %}
                         {% if not sr.key_resistances %}
-                        <div class="text-dim" style="font-size:12px">无明显阻力</div>
+                        <div class="text-dim" style="font-size:12px">{{ _t("ticker_detail.no_resistance") }}</div>
                         {% endif %}
                     </div>
                 </div>
@@ -473,49 +473,49 @@
             {% endif %}
         </div>
         {% else %}
-        <div class="empty-state-sm">数据不足，无法计算支撑阻力</div>
+        <div class="empty-state-sm">{{ _t("ticker_detail.insufficient_sr") }}</div>
         {% endif %}
     </div>
 
-    {# ---- Tab 4: 斐波那契 ---- #}
+    {# ---- Tab 4: Fibonacci ---- #}
     <div id="tab-fib" class="tab-panel">
         {% set fib = tech.get('fibonacci', {}) %}
         {% if fib %}
         <div class="tech-section">
-            {# 趋势方向 & Swing 点 #}
+            {# Trend Direction & Swing Points #}
             <div class="tech-status-bar {% if fib.is_uptrend %}bullish{% else %}bearish{% endif %}">
-                <span class="tech-status-label">趋势方向</span>
+                <span class="tech-status-label">{{ _t("ticker_detail.trend_direction") }}</span>
                 <span class="tech-status-value">{{ fib.trend_direction }}</span>
             </div>
 
             <div class="tech-grid-2 mt-8">
                 <div class="tech-data-block">
-                    <div class="data-block-title">📍 Swing 低点</div>
+                    <div class="data-block-title">{{ _t("ticker_detail.swing_low") }}</div>
                     <div class="data-block-row">
-                        <span>价格</span>
+                        <span>{{ _t("ticker_detail.vwap_price") }}</span>
                         <span class="text-mono">${{ "%.2f" | format(fib.swing_low.price) }}</span>
                     </div>
                     <div class="data-block-row">
-                        <span>日期</span>
+                        <span>Date</span>
                         <span class="text-secondary">{{ fib.swing_low.date }}</span>
                     </div>
                 </div>
                 <div class="tech-data-block">
-                    <div class="data-block-title">📍 Swing 高点</div>
+                    <div class="data-block-title">{{ _t("ticker_detail.swing_high") }}</div>
                     <div class="data-block-row">
-                        <span>价格</span>
+                        <span>{{ _t("ticker_detail.vwap_price") }}</span>
                         <span class="text-mono">${{ "%.2f" | format(fib.swing_high.price) }}</span>
                     </div>
                     <div class="data-block-row">
-                        <span>日期</span>
+                        <span>Date</span>
                         <span class="text-secondary">{{ fib.swing_high.date }}</span>
                     </div>
                 </div>
             </div>
 
-            {# 回调水平 #}
+            {# Retracement Levels #}
             <div class="tech-subsection">
-                <h4 class="tech-subtitle">回调水平 (Retracement)</h4>
+                <h4 class="tech-subtitle">{{ _t("ticker_detail.retracement_title") }}</h4>
                 <div class="fib-levels">
                     {% for label, info in fib.retracement_levels.items() %}
                     <div class="fib-row {% if info.role == '当前附近' %}current{% elif info.role == '支撑' %}support{% else %}resistance{% endif %}">
@@ -528,10 +528,10 @@
                 </div>
             </div>
 
-            {# 延伸目标 #}
+            {# Extension Targets #}
             {% if fib.extension_targets %}
             <div class="tech-subsection">
-                <h4 class="tech-subtitle">延伸目标 (Extension)</h4>
+                <h4 class="tech-subtitle">{{ _t("ticker_detail.extension_title") }}</h4>
                 <div class="fib-levels">
                     {% for label, info in fib.extension_targets.items() %}
                     <div class="fib-row extension">
@@ -544,34 +544,34 @@
             </div>
             {% endif %}
 
-            {# 当前区间 #}
+            {# Current Zone #}
             {% if fib.current_zone %}
             <div class="fib-zone-summary">
                 <div class="fib-zone-item">
-                    <span class="text-green">🛡️ 下方支撑</span>
+                    <span class="text-green">{{ _t("ticker_detail.fib_support_below") }}</span>
                     <span>{{ fib.current_zone.support }}</span>
                 </div>
                 <div class="fib-zone-item">
-                    <span class="text-red">🚧 上方阻力</span>
+                    <span class="text-red">{{ _t("ticker_detail.fib_resistance_above") }}</span>
                     <span>{{ fib.current_zone.resistance }}</span>
                 </div>
             </div>
             {% endif %}
         </div>
         {% else %}
-        <div class="empty-state-sm">数据不足，无法计算斐波那契</div>
+        <div class="empty-state-sm">{{ _t("ticker_detail.insufficient_fib") }}</div>
         {% endif %}
     </div>
 </div>
 {% endif %}
 
 {# ============================================================ #}
-{# 关键指标 (来自策略 metrics)                                    #}
+{# Key Metrics                                                   #}
 {# ============================================================ #}
 {% if metrics %}
 <div class="card">
     <div class="card-header">
-        <span class="card-title">📊 关键指标</span>
+        <span class="card-title">{{ _t("ticker_detail.key_metrics") }}</span>
     </div>
     <div class="key-metrics-grid">
         {% if metrics.sma50 is not none %}
@@ -584,38 +584,38 @@
         <div class="stat-row"><span class="stat-label">SMA200</span><span class="stat-value">{{ metrics.sma200 | fmt_price }}</span></div>
         {% endif %}
         {% if metrics.week52_high is not none %}
-        <div class="stat-row"><span class="stat-label">52周高</span><span class="stat-value">{{ metrics.week52_high | fmt_price }}</span></div>
+        <div class="stat-row"><span class="stat-label">{{ _t("ticker_detail.week52_high") }}</span><span class="stat-value">{{ metrics.week52_high | fmt_price }}</span></div>
         {% endif %}
         {% if metrics.week52_low is not none %}
-        <div class="stat-row"><span class="stat-label">52周低</span><span class="stat-value">{{ metrics.week52_low | fmt_price }}</span></div>
+        <div class="stat-row"><span class="stat-label">{{ _t("ticker_detail.week52_low") }}</span><span class="stat-value">{{ metrics.week52_low | fmt_price }}</span></div>
         {% endif %}
         {% if metrics.pct_from_high is not none %}
-        <div class="stat-row"><span class="stat-label">距52周高</span><span class="stat-value {{ metrics.pct_from_high | chg_color }}">{{ metrics.pct_from_high | fmt_pct }}</span></div>
+        <div class="stat-row"><span class="stat-label">{{ _t("ticker_detail.from_52w_high") }}</span><span class="stat-value {{ metrics.pct_from_high | chg_color }}">{{ metrics.pct_from_high | fmt_pct }}</span></div>
         {% endif %}
         {% if metrics.pct_above_sma200 is not none %}
-        <div class="stat-row"><span class="stat-label">vs SMA200</span><span class="stat-value {{ metrics.pct_above_sma200 | chg_color }}">{{ metrics.pct_above_sma200 | fmt_pct }}</span></div>
+        <div class="stat-row"><span class="stat-label">{{ _t("ticker_detail.vs_sma200") }}</span><span class="stat-value {{ metrics.pct_above_sma200 | chg_color }}">{{ metrics.pct_above_sma200 | fmt_pct }}</span></div>
         {% endif %}
         {% if metrics.stock_return_6m is not none %}
-        <div class="stat-row"><span class="stat-label">6M 回报</span><span class="stat-value {{ metrics.stock_return_6m | chg_color }}">{{ metrics.stock_return_6m | fmt_pct }}</span></div>
+        <div class="stat-row"><span class="stat-label">{{ _t("ticker_detail.return_6m") }}</span><span class="stat-value {{ metrics.stock_return_6m | chg_color }}">{{ metrics.stock_return_6m | fmt_pct }}</span></div>
         {% endif %}
         {% if metrics.spy_return_6m is not none %}
-        <div class="stat-row"><span class="stat-label">SPY 6M</span><span class="stat-value {{ metrics.spy_return_6m | chg_color }}">{{ metrics.spy_return_6m | fmt_pct }}</span></div>
+        <div class="stat-row"><span class="stat-label">{{ _t("ticker_detail.spy_6m") }}</span><span class="stat-value {{ metrics.spy_return_6m | chg_color }}">{{ metrics.spy_return_6m | fmt_pct }}</span></div>
         {% endif %}
         {% if metrics.sma50_slope is not none %}
-        <div class="stat-row"><span class="stat-label">SMA50斜率</span><span class="stat-value {{ metrics.sma50_slope | chg_color }}">{{ metrics.sma50_slope | fmt_pct }}</span></div>
+        <div class="stat-row"><span class="stat-label">{{ _t("ticker_detail.sma50_slope") }}</span><span class="stat-value {{ metrics.sma50_slope | chg_color }}">{{ metrics.sma50_slope | fmt_pct }}</span></div>
         {% endif %}
     </div>
 </div>
 {% endif %}
 
 {# ============================================================ #}
-{# 信号历史 + Score 走势 并排                                    #}
+{# Signal History + Score Trend side by side                     #}
 {# ============================================================ #}
 <div class="grid-2col">
-    {# 信号历史 #}
+    {# Signal History #}
     <div class="card">
         <div class="card-header">
-            <span class="card-title">🕐 信号变化历史</span>
+            <span class="card-title">{{ _t("ticker_detail.signal_history") }}</span>
         </div>
         {% if signal_changes %}
         <ul class="timeline">
@@ -636,14 +636,14 @@
             {% endfor %}
         </ul>
         {% else %}
-        <div class="empty-state">暂无信号变化记录</div>
+        <div class="empty-state">{{ _t("ticker_detail.no_signal_history") }}</div>
         {% endif %}
     </div>
 
-    {# Score 走势图 #}
+    {# Score Trend Chart #}
     <div class="card">
         <div class="card-header">
-            <span class="card-title">📈 Score 走势 (30天)</span>
+            <span class="card-title">{{ _t("ticker_detail.score_trend") }}</span>
         </div>
         <div class="chart-container" style="height:280px;">
             <canvas id="scoreChart"></canvas>
@@ -656,30 +656,26 @@
 {% block scripts %}
 <script>
 // ============================================================
-// Tab 切换
+// Tab switching
 // ============================================================
 function switchTab(e, tabId) {
-    // 取消所有 tab-btn 的 active
     const nav = e.target.closest('.tab-nav');
     nav.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     e.target.classList.add('active');
 
-    // 取消所有 tab-panel 的 active
     const card = nav.closest('.tech-indicators-card');
     card.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
 }
 
 // ============================================================
-// 条件面板展开/折叠
+// Conditions panel toggle
 // ============================================================
 function toggleConditions(key) {
     const panel = document.getElementById('conditions-' + key);
     if (!panel) return;
     const isVisible = panel.style.display !== 'none';
-    // 先关闭所有
     document.querySelectorAll('.conditions-panel').forEach(p => p.style.display = 'none');
-    // 如果之前是隐藏的，就打开
     if (!isVisible) {
         panel.style.display = 'block';
         panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -687,7 +683,7 @@ function toggleConditions(key) {
 }
 
 // ============================================================
-// Score 走势图 — 多策略叠加
+// Score Trend Chart — Multi-strategy overlay
 // ============================================================
 const s2Hist = {{ s2_history | tojson }};
 const vcpHist = {{ vcp_history | tojson }};
@@ -775,7 +771,7 @@ if (datasets.length > 0 && labels.length > 0) {
         }
     });
 } else {
-    document.getElementById('scoreChart').parentElement.innerHTML = '<div class="empty-state">暂无历史数据</div>';
+    document.getElementById('scoreChart').parentElement.innerHTML = '<div class="empty-state">{{ _t("ticker_detail.no_history_data") }}</div>';
 }
 </script>
 {% endblock %}

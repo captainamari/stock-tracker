@@ -1,27 +1,27 @@
-# Stage 2 监控报告
+# Stage 2 Monitoring Report
 
-**时间**: {{ timestamp }}
+**Time**: {{ timestamp }}
 {% if spy_return_6m is not none %}
-**SPY 6个月回报**: {{ spy_return_6m|fmt_pct }}
+**SPY 6-Month Return**: {{ spy_return_6m|fmt_pct }}
 {% endif %}
 
 {% if changes %}
-## 状态变化
+## Status Changes
 
 {% for c in changes %}
 {% if c.type == 'entry' %}
-- 进入 Stage 2: **{{ c.ticker }}**
+- Entered Stage 2: **{{ c.ticker }}**
 {% else %}
-- 离开 Stage 2: **{{ c.ticker }}**
+- Left Stage 2: **{{ c.ticker }}**
 {% endif %}
 {% endfor %}
 
 {% endif %}
 {% if stage2_stocks %}
-## Stage 2 股票
+## Stage 2 Stocks
 
-| # | 代码 | 名称 | 板块 | 价格 | 趋势强度 | 距高点 | 高于MA200 | 6M回报 | 5D | 20D |
-|---|------|------|------|------|----------|--------|----------|--------|-----|-----|
+| # | Code | Name | Sector | Price | Trend Power | From High | Above MA200 | 6M Return | 5D | 20D |
+|---|------|------|--------|-------|-------------|-----------|-------------|-----------|-----|-----|
 {% for s in stage2_stocks %}
 {% set ret = s.stock_return_6m|fmt_pct if s.stock_return_6m is not none else "N/A" %}
 {% set chg5 = s.chg_5d|fmt_pct if s.chg_5d is not none else "N/A" %}
@@ -31,11 +31,11 @@
 {% endfor %}
 
 {% else %}
-## 暂无 Stage 2 股票
+## No Stage 2 Stocks
 
 {% endif %}
 {% if near_stocks %}
-## 接近 Stage 2（关注列表）
+## Near Stage 2 (Watchlist)
 
 {% for s in near_stocks %}
 {% set failed_keys = [] %}
