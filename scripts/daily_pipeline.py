@@ -302,6 +302,7 @@ def _build_market_pulse_context(date_str: str) -> dict:
         vix=vix,
         breadth=breadth_data if breadth_data else None,
         hot_sectors=hot_sectors,
+        distribution_days=pulse.get('distribution_days', {}),
     )
 
 
@@ -608,6 +609,24 @@ def _build_daily_summary(date_str: str, pipeline_results: dict) -> str:
         if p.get('spy_price'):
             regime_line += f" · SPY ${p['spy_price']}"
 
+    # Distribution Days
+    dist_line = ""
+    if pulse_list:
+        dd_data = pulse_list[0].get('distribution_days', {})
+        if dd_data:
+            dd_parts = []
+            for ticker in ['SPY', 'QQQ']:
+                dd = dd_data.get(ticker)
+                if dd and isinstance(dd, dict):
+                    count = dd.get('count', 0)
+                    warn_emoji = {'low': '✅', 'moderate': '🟡', 'elevated': '🟠', 'high': '🔴', 'extreme': '🚨'}.get(dd.get('warning_level', 'low'), '❓')
+                    part = f"{ticker}: {count}"
+                    if dd.get('latest_is_distribution'):
+                        part += " ⚡"
+                    dd_parts.append(f"{part} {warn_emoji}")
+            if dd_parts:
+                dist_line = "📉 Dist Days: " + " · ".join(dd_parts)
+
     # Stage 2 count
     monitored = get_watchlist(enabled_only=True, source_type='monitored')
     total_monitored = len(monitored)
@@ -628,6 +647,9 @@ def _build_daily_summary(date_str: str, pipeline_results: dict) -> str:
 
     if regime_line:
         lines.append(f"🌡️ Market: {regime_line}")
+
+    if dist_line:
+        lines.append(dist_line)
 
     lines.append(f"📈 Stage 2: {s2_count}/{total_monitored}")
 

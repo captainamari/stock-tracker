@@ -52,7 +52,9 @@
     "no_signals": "暂无信号",
     "signal_changes": "🔔 近期信号变化",
     "no_signal_changes": "暂无信号变化",
-    "pulse_trend": "📈 Market Pulse 走势 (30天)"
+    "pulse_trend": "📈 Market Pulse 走势 (30天)",
+    "distribution_days": "Distribution Days（派发日）",
+    "dist_warning": "高回调风险！"
   },
   "watchlist": {
     "title": "观察列表 — Stock Tracker",

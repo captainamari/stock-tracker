@@ -162,6 +162,7 @@ CREATE TABLE IF NOT EXISTS market_pulse (
     vix_value       REAL,
     index_data      TEXT DEFAULT '{}',           -- JSON: SPY/QQQ/IWM 详细分析数据
     breadth_data    TEXT DEFAULT '{}',           -- JSON: 内部宽度数据
+    distribution_days TEXT DEFAULT '{}',         -- JSON: Distribution Day data {SPY: {...}, QQQ: {...}}
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
@@ -256,6 +257,16 @@ def init_db(db_path: Optional[Path] = None):
     """
     with get_db(db_path) as conn:
         conn.executescript(SCHEMA_SQL)
+
+        # Migration: add distribution_days column if missing (v1.2.0)
+        try:
+            cols = [row[1] for row in conn.execute("PRAGMA table_info(market_pulse)").fetchall()]
+            if 'distribution_days' not in cols:
+                conn.execute("ALTER TABLE market_pulse ADD COLUMN distribution_days TEXT DEFAULT '{}'")
+                print("  📦 Migration: added distribution_days column to market_pulse")
+        except Exception:
+            pass  # column already exists or table not yet created
+
         # 记录数据库版本
         conn.execute(
             "INSERT OR REPLACE INTO db_meta (key, value, updated_at) VALUES (?, ?, ?)",
@@ -723,6 +734,7 @@ def save_market_pulse(
     vix_value: Optional[float] = None,
     index_data: Optional[Dict] = None,
     breadth_data: Optional[Dict] = None,
+    distribution_days: Optional[Dict] = None,
     db_path: Optional[Path] = None,
 ):
     """保存 Market Pulse 数据"""
@@ -730,8 +742,8 @@ def save_market_pulse(
         conn.execute("""
             INSERT INTO market_pulse
                 (date, regime, composite_score, component_scores,
-                 spy_price, vix_value, index_data, breadth_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 spy_price, vix_value, index_data, breadth_data, distribution_days)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(date) DO UPDATE SET
                 regime = excluded.regime,
                 composite_score = excluded.composite_score,
@@ -740,6 +752,7 @@ def save_market_pulse(
                 vix_value = excluded.vix_value,
                 index_data = excluded.index_data,
                 breadth_data = excluded.breadth_data,
+                distribution_days = excluded.distribution_days,
                 created_at = datetime('now')
         """, (
             date_str, regime, composite_score,
@@ -747,6 +760,7 @@ def save_market_pulse(
             spy_price, vix_value,
             _json_dumps(index_data or {}),
             _json_dumps(breadth_data or {}),
+            _json_dumps(distribution_days or {}),
         ))
 
 
@@ -768,6 +782,7 @@ def get_market_pulse(date_str: Optional[str] = None, limit: int = 30,
             d['component_scores'] = json.loads(d['component_scores']) if d['component_scores'] else {}
             d['index_data'] = json.loads(d['index_data']) if d['index_data'] else {}
             d['breadth_data'] = json.loads(d['breadth_data']) if d['breadth_data'] else {}
+            d['distribution_days'] = json.loads(d.get('distribution_days') or '{}')
             results.append(d)
         return results
 

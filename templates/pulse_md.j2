@@ -11,6 +11,24 @@
 {{ prev_regime|upper }} → {{ regime_label }}
 
 {% endif %}
+{% if distribution_days %}
+## Distribution Days (25-Day Window)
+
+| Index | Dist Days | Stalling | Warning | Latest |
+|-------|-----------|----------|---------|--------|
+{% for ticker, dd in distribution_days.items() %}
+{% if dd %}
+| **{{ ticker }}** | {{ dd.count }} | {{ dd.stalling_count }} | {{ dd.warning_level | upper }} | {{ "⚡ DIST DAY" if dd.latest_is_distribution else ("⚠️ Stalling" if dd.latest_is_stalling else "—") }} |
+{% endif %}
+{% endfor %}
+
+{% set ns = namespace(max_count=0) %}
+{% for ticker, dd in distribution_days.items() %}{% if dd and dd.count > ns.max_count %}{% set ns.max_count = dd.count %}{% endif %}{% endfor %}
+{% if ns.max_count >= 5 %}
+> ⚠️ **WARNING**: {{ ns.max_count }} distribution days detected — historically, 5+ distribution days in a 25-day window often precede significant market declines. Consider reducing exposure.
+{% endif %}
+
+{% endif %}
 ## Index Overview
 
 | Index | Price | Score | vs MA50 | vs MA200 | RSI | 5D | 20D |

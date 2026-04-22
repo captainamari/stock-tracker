@@ -10,7 +10,7 @@ save_prices_yfinance.py   → Data collection yfinance (incremental + auto-chain
         ↓
     SQLite DB (stock_tracker.db)
         ↓
-market_pulse.py           → Strategy 0: Market Thermometer (macro overview, pushed first)
+market_pulse.py           → Strategy 0: Market Thermometer (macro overview + Distribution Day detection, pushed first)
         ↓
 stage2_monitor.py         → Strategy 1: Stage 2 Trend Confirmation (foundation)
         ↓
@@ -29,7 +29,7 @@ buying_checklist.py       → Strategy 4: Buying Checklist (multi-dimensional, w
 
 | Dimension | Market Pulse | Stage 2 Monitor | VCP Scanner | Bottom Fisher | Buying Checklist |
 |-----------|-------------|----------------|-------------|---------------|-----------------|
-| **Theory** | Multi-dim market thermometer | Stan Weinstein 4 stages | Mark Minervini VCP | Technical bottom (mean reversion) | Elder Impulse + multi-dim checklist |
+| **Theory** | Multi-dim market thermometer + IBD Distribution Day | Stan Weinstein 4 stages | Mark Minervini VCP | Technical bottom (mean reversion) | Elder Impulse + multi-dim checklist |
 | **Direction** | Macro assessment | Trend confirmation | Right-side breakout | Left-side reversal | Comprehensive buy decision |
 | **Scope** | SPY/QQQ/IWM/VIX + full pool | All monitored | Stage 2 only | All monitored | All monitored |
 | **Core question** | "Offense or defense?" | "Is it in an uptrend?" | "Which is about to break out?" | "Which good stock has bottomed?" | "Is it time to buy?" |
@@ -104,11 +104,12 @@ buying_checklist.py       → Strategy 4: Buying Checklist (multi-dimensional, w
 | `strategy_results` | Strategy daily results (shared by all) | (symbol, date, strategy) |
 | `strategy_states` | Strategy current state tracking | (symbol, strategy) |
 | `signal_changes` | Signal entry/exit history | id (auto-increment) |
-| `market_pulse` | Market macro state | date |
+| `market_pulse` | Market macro state (incl. Distribution Day data) | date |
 | `db_meta` | Database version metadata | key |
 
 **Design highlights**:
 - `strategy_results` uses JSON columns (`conditions`, `condition_details`, `metrics`) for flexible strategy-specific data
+- `market_pulse` table includes `distribution_days` JSON column storing SPY/QQQ Distribution Day detailed data
 - SQLite WAL mode for improved concurrent read performance
 - `_NumpyEncoder` auto-handles numpy type JSON serialization
 
@@ -128,7 +129,7 @@ tickers.json
      │    │  ┌─── Auto-chained after price update ──────────────┐
      │    │  │                                                    │
      ▼    ▼  ▼                                                    │
-market_pulse.py  ──→  market_pulse table  (SPY+QQQ+IWM+VIX+breadth)│
+market_pulse.py  ──→  market_pulse table  (SPY+QQQ+IWM+VIX+breadth+Distribution Days)│
      │                                                            │
 stage2_monitor.py  ──→  strategy_results/states                   │
      │                        │                                   │
@@ -174,16 +175,16 @@ Supplementary script, fetches tickers not covered by Stooq from Yahoo Finance, r
 
 ---
 
-## Strategy 0: Market Pulse (`market_pulse.py` v3.0)
+## Strategy 0: Market Pulse (`market_pulse.py` v4.0)
 
 ### Overview
-Market macro thermometer. Combines SPY/QQQ/IWM trends + VIX fear index + internal breadth + sector heat. **Pushed before all individual strategies** — big picture first, then individual signals.
+Market macro thermometer. Combines SPY/QQQ/IWM trends + VIX fear index + internal breadth + sector heat + **Distribution Day analysis (IBD methodology)**. **Pushed before all individual strategies** — big picture first, then individual signals.
 
 ### Design Principles
 - Reads DB data only, zero network requests
 - Graceful degradation when data unavailable (missing VIX → auto weight redistribution)
 
-### 5 Analysis Modules
+### 6 Analysis Modules
 
 #### ① SPY Trend Analysis (Weight 30%)
 
@@ -235,6 +236,41 @@ Based on monitored pool (not entire market):
 
 Additional: Sector heat ranking (sorted by Stage 2 ratio).
 
+### ⑥ Distribution Day Analysis (IBD Methodology)
+
+Based on Investor's Business Daily (IBD) classic market health indicator, detecting institutional selling at the index level. Historically, 5+ distribution days in a 25-day window often precede significant market declines.
+
+#### Distribution Day Definition
+
+| Type | Trigger | Description |
+|------|---------|-------------|
+| **Distribution Day** | Index drops ≥ 0.2% on higher volume than previous day | Institutions selling on heavy volume |
+| **Stalling Day** | Index closes up slightly (< 0.4%) in upper 75% of range, on higher volume | Institutions selling into strength (churning) |
+
+#### Rolling Window & Expiration Rules
+
+| Rule | Parameter | Description |
+|------|-----------|-------------|
+| Rolling window | 25 trading days | Only counts distribution days within last 25 sessions |
+| Time expiration | > 25 trading days | Auto-expires after 25 trading days |
+| Rally expiration | Index rallies ≥ 5% from that day's close | Market recovered, that day no longer counts |
+
+#### 5-Level Warning System
+
+| Cumulative Pressure* | Level | Emoji | Description |
+|----------------------|-------|-------|-------------|
+| < 2 | Low | ✅ | Normal, no significant selling |
+| 2-3 | Moderate | 🟡 | Light selling, monitor closely |
+| 4 | Elevated | 🟠 | Increased selling, heighten awareness |
+| 5 | High | 🔴 | Heavy selling, reduce exposure signal |
+| ≥ 6 | Extreme | 🚨 | Extreme selling, very high correction risk |
+
+*Cumulative Pressure = Distribution Days + Stalling Days × 0.5
+
+#### Scope
+- **SPY** (S&P 500) and **QQQ** (Nasdaq 100) tracked independently
+- Data source: Existing index daily OHLCV data in DB
+
 ### Composite Score & Market State
 
 | Score | State | Emoji | Suggestion |
@@ -248,6 +284,9 @@ Additional: Sector heat ranking (sorted by Stage 2 ratio).
 - VIX ≥ 30 → Force 🔴 BEARISH (pause all buying on fear spike)
 - SPY below SMA200 by >3% → Max downgrade to 🟠 CAUTIOUS
 - VIX < 13 and BULLISH → Attach ⚠️ complacency warning
+- **Distribution Days ≥ 6** → Force downgrade to 🔴 BEARISH (heavy institutional selling — cash is king)
+- **Distribution Days ≥ 5** → Max downgrade to 🟠 CAUTIOUS (elevated selling — reduce exposure)
+- **Distribution Days ≥ 4 and BULLISH** → Attach ⚠️ distribution days rising warning
 
 ### Regime Change Detection
 Auto-detects state changes. On regime switch (e.g., 🟢→🟡), Telegram push highlights the change at the top.
@@ -656,7 +695,7 @@ stock-tracker/
 ├── scripts/
 │   ├── save_prices.py            # ⚠️ Deprecated (Stooq unavailable)
 │   ├── save_prices_yfinance.py   # Data collection v2.1 (incremental + auto-chain)
-│   ├── market_pulse.py           # Strategy 0: Market Thermometer v3.0
+│   ├── market_pulse.py           # Strategy 0: Market Thermometer v4.0 (incl. Distribution Day analysis)
 │   ├── stage2_monitor.py         # Strategy 1: Stage 2 v4.0
 │   ├── vcp_scanner.py            # Strategy 2: VCP v2.0
 │   ├── bottom_fisher.py          # Strategy 3: Bottom Fisher v2.0
@@ -862,7 +901,7 @@ uvicorn web.app:app --reload --port 8000
 
 | Page | Path | Features |
 |------|------|----------|
-| **Dashboard** | `/` | Market Pulse status + 4-strategy signal summary (Stage 2 / VCP / Bottom Fisher / Buying Checklist) + recent signal changes + 30-day trend chart |
+| **Dashboard** | `/` | Market Pulse status + Distribution Days indicator bar + 4-strategy signal summary (Stage 2 / VCP / Bottom Fisher / Buying Checklist) + recent signal changes + 30-day trend chart |
 | **Watchlist** | `/watchlist` | Multi-strategy comparison table (4 strategy status/scores), sector filter / search / signal-only filter + **Ticker add/remove** |
 | **Ticker Detail** | `/ticker/{symbol}` | 4-strategy status cards + 4-tab technical analysis (MA / Momentum / S&R / Fibonacci) + condition details + key metrics + signal history + score trend chart |
 

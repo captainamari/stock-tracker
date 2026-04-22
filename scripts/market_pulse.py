@@ -338,6 +338,126 @@ def analyze_breadth(stage2_states):
     return result
 
 
+def analyze_distribution_days(ticker, data, window=25):
+    """
+    Detect Distribution Days for a major index (IBD methodology).
+
+    Definition: A distribution day is when the index closes DOWN ≥ 0.2%
+    on HIGHER volume than the previous trading day.
+
+    Rules:
+      - Rolling window: 25 trading days
+      - Expiration: A distribution day expires if:
+        1) It's older than 25 trading days, OR
+        2) The index has rallied ≥ 5% from that day's close
+
+    Also detects Stalling Days (churning):
+      A stalling day is when the index closes UP but in the upper 25% of
+      its range, on higher volume, suggesting institutional selling into strength.
+
+    Returns dict with:
+      - count: active distribution days in window
+      - days: list of {date, close, change_pct, volume_vs_prev}
+      - stalling_count: active stalling days
+      - latest_is_distribution: whether the most recent day is a distribution day
+      - warning_level: 'low' | 'moderate' | 'elevated' | 'high' | 'extreme'
+    """
+    if data is None or len(data) < 30:
+        return None
+
+    close = data['Close']
+    volume = data['Volume'] if 'Volume' in data.columns else None
+    high = data['High'] if 'High' in data.columns else None
+    low = data['Low'] if 'Low' in data.columns else None
+
+    if volume is None:
+        return None
+
+    latest_price = close.iloc[-1]
+    result = {
+        'ticker': ticker,
+        'count': 0,
+        'days': [],
+        'stalling_count': 0,
+        'stalling_days': [],
+        'latest_is_distribution': False,
+        'latest_is_stalling': False,
+        'warning_level': 'low',
+    }
+
+    # Scan the last `window` trading days (skip the last day as "today")
+    scan_start = max(1, len(data) - window)
+
+    for i in range(scan_start, len(data)):
+        day_close = close.iloc[i]
+        prev_close = close.iloc[i - 1]
+        day_volume = volume.iloc[i]
+        prev_volume = volume.iloc[i - 1]
+
+        if prev_close == 0 or prev_volume == 0:
+            continue
+
+        change_pct = (day_close / prev_close - 1) * 100
+        vol_ratio = day_volume / prev_volume
+
+        # Check if this day has been "rallied off" (5% rule)
+        rally_from_close = (latest_price / day_close - 1) * 100 if day_close > 0 else 0
+        if rally_from_close >= 5.0:
+            continue  # This distribution day is expired due to rally
+
+        day_date = data.index[i].strftime('%Y-%m-%d') if hasattr(data.index[i], 'strftime') else str(data.index[i])
+
+        # Distribution Day: down ≥ 0.2% on higher volume
+        if change_pct <= -0.2 and vol_ratio > 1.0:
+            day_info = {
+                'date': day_date,
+                'close': round(day_close, 2),
+                'change_pct': round(change_pct, 2),
+                'volume_vs_prev': round(vol_ratio, 2),
+            }
+            result['days'].append(day_info)
+            result['count'] += 1
+
+            # Check if this is the most recent trading day
+            if i == len(data) - 1:
+                result['latest_is_distribution'] = True
+
+        # Stalling Day: closes up but in upper 25% of range, higher volume
+        elif high is not None and low is not None and change_pct > 0:
+            day_high = high.iloc[i]
+            day_low = low.iloc[i]
+            day_range = day_high - day_low
+            if day_range > 0 and vol_ratio > 1.0:
+                close_position = (day_close - day_low) / day_range
+                # Stalling = closes in top 25% of range but gains are small (< 0.4%)
+                if close_position >= 0.75 and change_pct < 0.4:
+                    stall_info = {
+                        'date': day_date,
+                        'close': round(day_close, 2),
+                        'change_pct': round(change_pct, 2),
+                        'volume_vs_prev': round(vol_ratio, 2),
+                    }
+                    result['stalling_days'].append(stall_info)
+                    result['stalling_count'] += 1
+                    if i == len(data) - 1:
+                        result['latest_is_stalling'] = True
+
+    # Warning level based on count (IBD methodology)
+    total_pressure = result['count'] + result['stalling_count'] * 0.5
+    if total_pressure >= 6:
+        result['warning_level'] = 'extreme'
+    elif total_pressure >= 5:
+        result['warning_level'] = 'high'
+    elif total_pressure >= 4:
+        result['warning_level'] = 'elevated'
+    elif total_pressure >= 2:
+        result['warning_level'] = 'moderate'
+    else:
+        result['warning_level'] = 'low'
+
+    return result
+
+
 def calculate_composite_score(spy_result, qqq_result, iwm_result, vix_result, breadth_result):
     scores = {}
     weights = {}
@@ -353,7 +473,7 @@ def calculate_composite_score(spy_result, qqq_result, iwm_result, vix_result, br
     return round(composite, 0), scores
 
 
-def determine_regime(composite_score, spy_result, vix_result):
+def determine_regime(composite_score, spy_result, vix_result, dist_days_data=None):
     if composite_score >= 70:
         regime, emoji, label, hint = 'bullish', '🟢', 'BULLISH', '趋势强劲，积极寻找入场机会'
     elif composite_score >= 50:
@@ -373,13 +493,26 @@ def determine_regime(composite_score, spy_result, vix_result):
         if spy_result['pct_vs_sma200'] < -3 and regime not in ('bearish', 'cautious'):
             regime, emoji, label, hint = 'cautious', '🟠', 'CAUTIOUS (SPY<MA200)', 'SPY 跌破200日均线'
 
+    # Distribution Day override: heavy distribution → downgrade regime
+    if dist_days_data:
+        max_count = max(
+            dist_days_data.get('SPY', {}).get('count', 0) if dist_days_data.get('SPY') else 0,
+            dist_days_data.get('QQQ', {}).get('count', 0) if dist_days_data.get('QQQ') else 0,
+        )
+        if max_count >= 6 and regime not in ('bearish',):
+            regime, emoji, label, hint = 'bearish', '🔴', 'BEARISH', f'Distribution days ({max_count}) critical — cash is king'
+        elif max_count >= 5 and regime not in ('bearish', 'cautious'):
+            regime, emoji, label, hint = 'cautious', '🟠', 'CAUTIOUS', f'Distribution days ({max_count}) elevated — reduce exposure'
+        elif max_count >= 4 and regime == 'bullish':
+            hint += f' ⚠️ Distribution days ({max_count}) rising'
+
     return regime, emoji, label, hint
 
 
 # ============================================================
 # 报告生成（Jinja2 模板）
 # ============================================================
-def generate_reports(composite, scores, regime_info, spy, qqq, iwm, vix, breadth, prev_state):
+def generate_reports(composite, scores, regime_info, spy, qqq, iwm, vix, breadth, prev_state, dist_days_data=None):
     """使用 Jinja2 模板生成 MD 和 Telegram 报告"""
     regime, regime_emoji, regime_label, hint = regime_info
     prev_regime = prev_state.get('regime', 'unknown') if prev_state else 'unknown'
@@ -406,6 +539,7 @@ def generate_reports(composite, scores, regime_info, spy, qqq, iwm, vix, breadth
         vix=vix,
         breadth=breadth,
         hot_sectors=hot_sectors,
+        distribution_days=dist_days_data,
     )
 
     md_report = render_template('pulse_md.j2', **ctx)
@@ -465,11 +599,23 @@ def main():
     if breadth_result:
         log(f"  >MA50: {breadth_result['above_sma50_pct']:.0f}% · Stage2: {breadth_result['stage2_pct']:.0f}%")
 
+    # Distribution Days 分析 (IBD methodology)
+    log("分析 Distribution Days...")
+    dist_days_data = {}
+    for ticker, idx_data in [('SPY', spy_data), ('QQQ', qqq_data)]:
+        dd_result = analyze_distribution_days(ticker, idx_data)
+        if dd_result:
+            dist_days_data[ticker] = dd_result
+            warning_emoji = {'low': '✅', 'moderate': '🟡', 'elevated': '🟠', 'high': '🔴', 'extreme': '🚨'}.get(dd_result['warning_level'], '❓')
+            log(f"  {ticker}: {dd_result['count']} distribution days ({dd_result['stalling_count']} stalling) {warning_emoji}")
+        else:
+            log(f"  {ticker}: Data unavailable for distribution day analysis", "WARNING")
+
     # 综合评分
     composite, scores = calculate_composite_score(
         spy_result, qqq_result, iwm_result, vix_result, breadth_result
     )
-    regime_info = determine_regime(composite, spy_result, vix_result)
+    regime_info = determine_regime(composite, spy_result, vix_result, dist_days_data)
     regime, emoji, label, hint = regime_info
     log(f"综合评分: {composite}/100 · {label}")
 
@@ -489,13 +635,15 @@ def main():
             'VIX': vix_result if vix_result else {},
         },
         breadth_data=breadth_result if breadth_result else {},
+        distribution_days=dist_days_data if dist_days_data else {},
     )
     log("  Market Pulse 已写入 DB")
 
     # 生成报告
     md_report, tg_report = generate_reports(
         composite, scores, regime_info,
-        spy_result, qqq_result, iwm_result, vix_result, breadth_result, prev_state
+        spy_result, qqq_result, iwm_result, vix_result, breadth_result, prev_state,
+        dist_days_data=dist_days_data,
     )
     save_report_files(md_report, tg_report, strategy_prefix="_pulse", log_func=log)
 

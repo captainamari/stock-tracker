@@ -52,7 +52,9 @@
     "no_signals": "No signals",
     "signal_changes": "🔔 Recent Signal Changes",
     "no_signal_changes": "No signal changes",
-    "pulse_trend": "📈 Market Pulse Trend (30D)"
+    "pulse_trend": "📈 Market Pulse Trend (30D)",
+    "distribution_days": "Distribution Days",
+    "dist_warning": "High correction risk!"
   },
   "watchlist": {
     "title": "Watchlist — Stock Tracker",

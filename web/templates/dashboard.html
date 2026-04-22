@@ -32,6 +32,27 @@
         </div>
         {% endfor %}
     </div>
+
+    {# Distribution Days indicator #}
+    {% if pulse.distribution_days %}
+    <div class="dist-days-bar">
+        <span class="dist-days-label">📉 {{ _t('dashboard.distribution_days') if _t else 'Distribution Days' }}:</span>
+        {% for ticker, dd in pulse.distribution_days.items() %}
+        {% if dd and dd.count is defined %}
+        {% set warn_class = 'dist-extreme' if dd.count >= 6 else ('dist-high' if dd.count >= 5 else ('dist-elevated' if dd.count >= 4 else ('dist-moderate' if dd.count >= 2 else 'dist-low'))) %}
+        <span class="dist-days-chip {{ warn_class }}" title="{{ ticker }}: {{ dd.count }} distribution days{% if dd.stalling_count %} + {{ dd.stalling_count }} stalling{% endif %}{% if dd.latest_is_distribution %} (latest is dist day){% endif %}">
+            {{ ticker }}: <strong>{{ dd.count }}</strong>{% if dd.stalling_count %}<small>+{{ dd.stalling_count }}s</small>{% endif %}
+            {% if dd.latest_is_distribution %}<span class="dist-flash">⚡</span>{% endif %}
+        </span>
+        {% endif %}
+        {% endfor %}
+        {% set ns = namespace(max_count=0) %}
+        {% for ticker, dd in pulse.distribution_days.items() %}{% if dd and dd.count is defined and dd.count > ns.max_count %}{% set ns.max_count = dd.count %}{% endif %}{% endfor %}
+        {% if ns.max_count >= 5 %}
+        <span class="dist-days-warning">⚠️ {{ _t('dashboard.dist_warning') if _t else 'High correction risk!' }}</span>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 {% else %}
 <div class="card">

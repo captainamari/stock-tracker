@@ -243,6 +243,82 @@ a:hover {
 .score-bar-fill.orange { background: var(--orange); }
 .score-bar-fill.red { background: var(--red); }
 
+/* ---------- Distribution Days Indicator ---------- */
+.dist-days-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0 0;
+    margin-top: 12px;
+    border-top: 1px solid var(--border-light);
+    flex-wrap: wrap;
+}
+
+.dist-days-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dist-days-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-family: var(--font-mono);
+    cursor: default;
+}
+.dist-days-chip small {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+.dist-low {
+    background: var(--green-bg);
+    color: var(--green);
+    border: 1px solid rgba(63, 185, 80, 0.3);
+}
+.dist-moderate {
+    background: var(--yellow-bg);
+    color: var(--yellow);
+    border: 1px solid rgba(210, 153, 34, 0.3);
+}
+.dist-elevated {
+    background: var(--orange-bg);
+    color: var(--orange);
+    border: 1px solid rgba(219, 109, 40, 0.3);
+}
+.dist-high {
+    background: var(--red-bg);
+    color: var(--red);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+}
+.dist-extreme {
+    background: var(--red-bg);
+    color: var(--red);
+    border: 1px solid rgba(248, 81, 73, 0.5);
+    font-weight: 700;
+}
+
+.dist-flash {
+    animation: dist-pulse 1.5s ease-in-out infinite;
+}
+@keyframes dist-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+.dist-days-warning {
+    font-size: 12px;
+    color: var(--red);
+    font-weight: 700;
+    animation: dist-pulse 2s ease-in-out infinite;
+}
+
 /* ---------- Strategy Grid ---------- */
 .strategy-grid {
     display: grid;

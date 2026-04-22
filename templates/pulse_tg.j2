@@ -6,6 +6,27 @@ Score: <b>{{ composite }}/100</b> · {{ regime_label }}
 {{ prev_regime_emoji }} {{ prev_regime|upper }} → {{ regime_emoji }} {{ regime|upper }}
 
 {% endif %}
+
+{% if distribution_days %}
+<b>📉 Distribution Days</b> (25-day window)
+
+{% for ticker, dd in distribution_days.items() %}
+{% if dd %}
+{% set warn_emoji = {'low': '✅', 'moderate': '🟡', 'elevated': '🟠', 'high': '🔴', 'extreme': '🚨'} %}
+<b>{{ ticker }}</b>: {{ dd.count }} dist{{ " + " ~ dd.stalling_count ~ " stall" if dd.stalling_count else "" }} {{ warn_emoji.get(dd.warning_level, '❓') }}{% if dd.latest_is_distribution %} ← <i>Yesterday was dist day</i>{% endif %}
+
+{% endif %}
+{% endfor %}
+{% set spy_dd = distribution_days.get('SPY', {}) %}
+{% set qqq_dd = distribution_days.get('QQQ', {}) %}
+{% set spy_count = spy_dd.count if spy_dd and spy_dd.count is defined else 0 %}
+{% set qqq_count = qqq_dd.count if qqq_dd and qqq_dd.count is defined else 0 %}
+{% set max_dd = [spy_count, qqq_count] | max %}
+{% if max_dd >= 5 %}
+⚠️ <b>WARNING: {{ max_dd }}+ distribution days — high risk of correction!</b>
+{% endif %}
+{% endif %}
+
 <b>📊 Index Overview</b>
 
 {% for idx in indices if idx is not none %}
