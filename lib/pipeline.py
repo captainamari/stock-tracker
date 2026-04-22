@@ -176,7 +176,8 @@ def run_single_ticker_pipeline(symbol: str, name: str, sector: str) -> dict:
     from lib.db import (
         init_db, upsert_prices, get_prices_as_dataframe,
         save_strategy_result, upsert_strategy_state,
-        get_strategy_state,
+        get_strategy_state, get_strategy_states,
+        record_signal_change,
     )
     from lib.models import TickerInfo
 
@@ -259,6 +260,11 @@ def run_single_ticker_pipeline(symbol: str, name: str, sector: str) -> dict:
         from scripts.stage2_monitor import check_stage2_conditions
 
         ticker_info = TickerInfo(symbol=symbol, name=name, sector=sector)
+
+        # Load previous state for change detection
+        prev_s2_state = get_strategy_state(symbol, 'stage2')
+        was_s2 = bool(prev_s2_state and prev_s2_state.get('is_active'))
+
         s2_result = check_stage2_conditions(ticker_info)
 
         if s2_result:
@@ -316,6 +322,30 @@ def run_single_ticker_pipeline(symbol: str, name: str, sector: str) -> dict:
             logger.info(f"[Pipeline] {symbol}: Stage2 {'✅' if s2_result['is_stage2'] else '❌'} "
                         f"({s2_result['passed']}/{s2_result['total']}, TP:{s2_result['trend_power']})")
 
+            # Detect signal change
+            is_now_s2 = s2_result['is_stage2']
+            if is_now_s2 and not was_s2:
+                record_signal_change(
+                    symbol=symbol, date_str=date_str, strategy='stage2',
+                    change_type='entry', price=s2_result['price'],
+                    score=s2_result['trend_power'],
+                    details={
+                        'name': name, 'sector': sector,
+                        'pct_from_high': s2_result.get('pct_from_high'),
+                        'stock_return_6m': s2_result.get('stock_return_6m'),
+                    },
+                )
+                logger.info(f"[Pipeline] {symbol}: Stage2 signal change — entry")
+            elif not is_now_s2 and was_s2:
+                failed = [k for k, v in s2_result['conditions'].items() if v is False]
+                record_signal_change(
+                    symbol=symbol, date_str=date_str, strategy='stage2',
+                    change_type='exit', price=s2_result['price'],
+                    score=s2_result['trend_power'],
+                    details={'name': name, 'sector': sector, 'failed_conditions': failed},
+                )
+                logger.info(f"[Pipeline] {symbol}: Stage2 signal change — exit")
+
     except Exception as e:
         logger.warning(f"[Pipeline] {symbol}: Stage2 分析失败: {e}")
 
@@ -325,6 +355,10 @@ def run_single_ticker_pipeline(symbol: str, name: str, sector: str) -> dict:
 
         data = get_prices_as_dataframe(symbol, min_rows=200)
         s2_state = get_strategy_state(symbol, 'stage2')
+
+        # Load previous VCP state for change detection
+        prev_vcp_state = get_strategy_state(symbol, 'vcp')
+        was_vcp = bool(prev_vcp_state and prev_vcp_state.get('is_active'))
 
         if data is not None and s2_state and s2_state.get('is_active'):
             t_info = {'name': name, 'sector': sector, 'symbol': symbol}
@@ -378,6 +412,25 @@ def run_single_ticker_pipeline(symbol: str, name: str, sector: str) -> dict:
                 }
                 logger.info(f"[Pipeline] {symbol}: VCP {'✅' if vcp_result['is_vcp'] else '❌'} "
                             f"(Score:{vcp_result['vcp_score']})")
+
+                # Detect VCP signal change
+                is_now_vcp = vcp_result['is_vcp']
+                if is_now_vcp and not was_vcp:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='vcp',
+                        change_type='new_signal', price=vcp_result['price'],
+                        score=vcp_result['vcp_score'],
+                        details={'name': name, 'sector': sector},
+                    )
+                    logger.info(f"[Pipeline] {symbol}: VCP signal change — new_signal")
+                elif not is_now_vcp and was_vcp:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='vcp',
+                        change_type='lost_signal', price=vcp_result['price'],
+                        score=vcp_result['vcp_score'],
+                        details={'name': name},
+                    )
+                    logger.info(f"[Pipeline] {symbol}: VCP signal change — lost_signal")
         else:
             logger.info(f"[Pipeline] {symbol}: VCP 跳过 (非 Stage2 或数据不足)")
 
@@ -387,9 +440,12 @@ def run_single_ticker_pipeline(symbol: str, name: str, sector: str) -> dict:
     # ── Step 4: 运行 Bottom Fisher ──
     try:
         from scripts.bottom_fisher import analyze_bottom
-        from lib.db import get_strategy_states
 
         data = get_prices_as_dataframe(symbol, min_rows=200)
+
+        # Load previous BF state for change detection
+        prev_bf_state = get_strategy_state(symbol, 'bottom_fisher')
+        was_bf = bool(prev_bf_state and prev_bf_state.get('is_active'))
 
         if data is not None:
             # 获取 stage2 states 用于质地判断
@@ -446,6 +502,25 @@ def run_single_ticker_pipeline(symbol: str, name: str, sector: str) -> dict:
                 logger.info(f"[Pipeline] {symbol}: BottomFisher {'✅' if bf_result['is_bottom_signal'] else '❌'} "
                             f"(Score:{bf_result['bf_score']})")
 
+                # Detect BF signal change
+                is_now_bf = bf_result['is_bottom_signal']
+                if is_now_bf and not was_bf:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='bottom_fisher',
+                        change_type='new_signal', price=bf_result['price'],
+                        score=bf_result['bf_score'],
+                        details={'name': name, 'sector': sector},
+                    )
+                    logger.info(f"[Pipeline] {symbol}: Bottom Fisher signal change — new_signal")
+                elif not is_now_bf and was_bf:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='bottom_fisher',
+                        change_type='lost_signal', price=bf_result['price'],
+                        score=bf_result['bf_score'],
+                        details={'name': name},
+                    )
+                    logger.info(f"[Pipeline] {symbol}: Bottom Fisher signal change — lost_signal")
+
     except Exception as e:
         logger.warning(f"[Pipeline] {symbol}: Bottom Fisher 分析失败: {e}")
 
@@ -454,6 +529,10 @@ def run_single_ticker_pipeline(symbol: str, name: str, sector: str) -> dict:
         from scripts.buying_checklist import analyze_buying_checklist
 
         data = get_prices_as_dataframe(symbol, min_rows=200)
+
+        # Load previous BC state for change detection
+        prev_bc_state = get_strategy_state(symbol, 'buying_checklist')
+        was_bc = bool(prev_bc_state and prev_bc_state.get('is_active'))
 
         if data is not None:
             stage2_states_list = get_strategy_states('stage2')
@@ -512,6 +591,25 @@ def run_single_ticker_pipeline(symbol: str, name: str, sector: str) -> dict:
                 }
                 logger.info(f"[Pipeline] {symbol}: BuyingChecklist {'✅' if bc_result['is_bc_signal'] else '❌'} "
                             f"(Score:{bc_result['bc_score']})")
+
+                # Detect BC signal change
+                is_now_bc = bc_result['is_bc_signal']
+                if is_now_bc and not was_bc:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='buying_checklist',
+                        change_type='new_signal', price=bc_result['price'],
+                        score=bc_result['bc_score'],
+                        details={'name': name, 'sector': sector},
+                    )
+                    logger.info(f"[Pipeline] {symbol}: Buying Checklist signal change — new_signal")
+                elif not is_now_bc and was_bc:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='buying_checklist',
+                        change_type='lost_signal', price=bc_result['price'],
+                        score=bc_result['bc_score'],
+                        details={'name': name},
+                    )
+                    logger.info(f"[Pipeline] {symbol}: Buying Checklist signal change — lost_signal")
 
     except Exception as e:
         logger.warning(f"[Pipeline] {symbol}: Buying Checklist 分析失败: {e}")
@@ -672,6 +770,7 @@ def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
         get_prices_as_dataframe,
         save_strategy_result, upsert_strategy_state,
         get_strategy_state, get_strategy_states,
+        record_signal_change,
     )
     from lib.models import TickerInfo
 
@@ -682,6 +781,11 @@ def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
     try:
         from scripts.stage2_monitor import check_stage2_conditions
         ticker_info = TickerInfo(symbol=symbol, name=name, sector=sector)
+
+        # Load previous state BEFORE computing new result (for change detection)
+        prev_s2_state = get_strategy_state(symbol, 'stage2')
+        was_s2 = bool(prev_s2_state and prev_s2_state.get('is_active'))
+
         s2_result = check_stage2_conditions(ticker_info)
         if s2_result:
             save_strategy_result(
@@ -723,6 +827,40 @@ def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
                 'is_signal': s2_result['is_stage2'],
                 'score': s2_result['trend_power'],
             }
+
+            # Detect signal change: entry or exit
+            is_now_s2 = s2_result['is_stage2']
+            if is_now_s2 and not was_s2:
+                record_signal_change(
+                    symbol=symbol, date_str=date_str, strategy='stage2',
+                    change_type='entry', price=s2_result['price'],
+                    score=s2_result['trend_power'],
+                    details={
+                        'name': name, 'sector': sector,
+                        'pct_from_high': s2_result.get('pct_from_high'),
+                        'stock_return_6m': s2_result.get('stock_return_6m'),
+                    },
+                )
+                logger.info(f"[Refresh] {symbol}: Stage2 signal change recorded — entry")
+            elif not is_now_s2 and was_s2:
+                failed = [k for k, v in s2_result['conditions'].items() if v is False]
+                days_held = 0
+                if prev_s2_state and prev_s2_state.get('entry_date'):
+                    try:
+                        days_held = (datetime.now() - datetime.strptime(prev_s2_state['entry_date'], '%Y-%m-%d')).days
+                    except Exception:
+                        pass
+                record_signal_change(
+                    symbol=symbol, date_str=date_str, strategy='stage2',
+                    change_type='exit', price=s2_result['price'],
+                    score=s2_result['trend_power'],
+                    details={
+                        'name': name, 'sector': sector,
+                        'days_held': days_held,
+                        'failed_conditions': failed,
+                    },
+                )
+                logger.info(f"[Refresh] {symbol}: Stage2 signal change recorded — exit")
     except Exception as e:
         logger.warning(f"[Refresh] {symbol}: Stage2 分析失败: {e}")
 
@@ -731,6 +869,11 @@ def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
         from scripts.vcp_scanner import analyze_vcp
         data = get_prices_as_dataframe(symbol, min_rows=200)
         s2_state = get_strategy_state(symbol, 'stage2')
+
+        # Load previous VCP state for change detection
+        prev_vcp_state = get_strategy_state(symbol, 'vcp')
+        was_vcp = bool(prev_vcp_state and prev_vcp_state.get('is_active'))
+
         if data is not None and s2_state and s2_state.get('is_active'):
             t_info = {'name': name, 'sector': sector, 'symbol': symbol}
             vcp_result = analyze_vcp(symbol, t_info, data, s2_state)
@@ -771,6 +914,37 @@ def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
                     'is_signal': vcp_result['is_vcp'],
                     'score': vcp_result['vcp_score'],
                 }
+
+                # Detect VCP signal change
+                is_now_vcp = vcp_result['is_vcp']
+                if is_now_vcp and not was_vcp:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='vcp',
+                        change_type='new_signal', price=vcp_result['price'],
+                        score=vcp_result['vcp_score'],
+                        details={'name': name, 'sector': sector},
+                    )
+                    logger.info(f"[Refresh] {symbol}: VCP signal change recorded — new_signal")
+                elif not is_now_vcp and was_vcp:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='vcp',
+                        change_type='lost_signal', price=vcp_result['price'],
+                        score=vcp_result['vcp_score'],
+                        details={'name': name},
+                    )
+                    logger.info(f"[Refresh] {symbol}: VCP signal change recorded — lost_signal")
+        elif was_vcp:
+            # Was VCP but no longer in Stage 2 → lost VCP signal
+            upsert_strategy_state(
+                symbol=symbol, strategy='vcp',
+                is_active=False,
+            )
+            record_signal_change(
+                symbol=symbol, date_str=date_str, strategy='vcp',
+                change_type='lost_signal', price=None, score=None,
+                details={'name': name, 'reason': 'lost_stage2'},
+            )
+            logger.info(f"[Refresh] {symbol}: VCP signal change recorded — lost_signal (lost Stage2)")
     except Exception as e:
         logger.warning(f"[Refresh] {symbol}: VCP 分析失败: {e}")
 
@@ -778,6 +952,11 @@ def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
     try:
         from scripts.bottom_fisher import analyze_bottom
         data = get_prices_as_dataframe(symbol, min_rows=200)
+
+        # Load previous BF state for change detection
+        prev_bf_state = get_strategy_state(symbol, 'bottom_fisher')
+        was_bf = bool(prev_bf_state and prev_bf_state.get('is_active'))
+
         if data is not None:
             stage2_states_list = get_strategy_states('stage2')
             stage2_states = {s['symbol']: s for s in stage2_states_list}
@@ -818,6 +997,25 @@ def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
                     'is_signal': bf_result['is_bottom_signal'],
                     'score': bf_result['bf_score'],
                 }
+
+                # Detect BF signal change
+                is_now_bf = bf_result['is_bottom_signal']
+                if is_now_bf and not was_bf:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='bottom_fisher',
+                        change_type='new_signal', price=bf_result['price'],
+                        score=bf_result['bf_score'],
+                        details={'name': name, 'sector': sector},
+                    )
+                    logger.info(f"[Refresh] {symbol}: Bottom Fisher signal change recorded — new_signal")
+                elif not is_now_bf and was_bf:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='bottom_fisher',
+                        change_type='lost_signal', price=bf_result['price'],
+                        score=bf_result['bf_score'],
+                        details={'name': name},
+                    )
+                    logger.info(f"[Refresh] {symbol}: Bottom Fisher signal change recorded — lost_signal")
     except Exception as e:
         logger.warning(f"[Refresh] {symbol}: Bottom Fisher 分析失败: {e}")
 
@@ -825,6 +1023,11 @@ def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
     try:
         from scripts.buying_checklist import analyze_buying_checklist
         data = get_prices_as_dataframe(symbol, min_rows=200)
+
+        # Load previous BC state for change detection
+        prev_bc_state = get_strategy_state(symbol, 'buying_checklist')
+        was_bc = bool(prev_bc_state and prev_bc_state.get('is_active'))
+
         if data is not None:
             stage2_states_list = get_strategy_states('stage2')
             stage2_states = {s['symbol']: s for s in stage2_states_list}
@@ -869,6 +1072,25 @@ def _run_strategies_for_ticker(symbol: str, name: str, sector: str) -> dict:
                     'is_signal': bc_result['is_bc_signal'],
                     'score': bc_result['bc_score'],
                 }
+
+                # Detect BC signal change
+                is_now_bc = bc_result['is_bc_signal']
+                if is_now_bc and not was_bc:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='buying_checklist',
+                        change_type='new_signal', price=bc_result['price'],
+                        score=bc_result['bc_score'],
+                        details={'name': name, 'sector': sector},
+                    )
+                    logger.info(f"[Refresh] {symbol}: Buying Checklist signal change recorded — new_signal")
+                elif not is_now_bc and was_bc:
+                    record_signal_change(
+                        symbol=symbol, date_str=date_str, strategy='buying_checklist',
+                        change_type='lost_signal', price=bc_result['price'],
+                        score=bc_result['bc_score'],
+                        details={'name': name},
+                    )
+                    logger.info(f"[Refresh] {symbol}: Buying Checklist signal change recorded — lost_signal")
     except Exception as e:
         logger.warning(f"[Refresh] {symbol}: Buying Checklist 分析失败: {e}")
 

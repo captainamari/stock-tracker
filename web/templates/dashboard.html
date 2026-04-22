@@ -61,7 +61,7 @@
 {% endif %}
 
 {# ============================================================ #}
-{# Strategy Signals Summary — Tab + Mini Table                   #}
+{# Strategy Signals Summary — 2×2 Grid Cards                    #}
 {# ============================================================ #}
 {% set strategies = [
     ('stage2',  '🟢 Stage 2',       stage2_signals, stage2_total),
@@ -69,25 +69,15 @@
     ('bf',      '🔻 Bottom Fisher', bf_signals,     bf_total),
     ('bc',      '📋 Buying Checklist', bc_signals,  bc_total),
 ] %}
-<div class="card strategy-signals-card">
-    {# Tab Navigation #}
-    <div class="strategy-tab-nav" role="tablist">
-        {% for key, label, signals, total in strategies %}
-        <button class="strategy-tab-btn {% if loop.first %}active{% endif %}"
-                role="tab"
-                data-target="stab-{{ key }}"
-                aria-selected="{{ 'true' if loop.first else 'false' }}">
-            {{ label }}
-            <span class="strategy-tab-count">{{ signals | length }}/{{ total }}</span>
-        </button>
-        {% endfor %}
-    </div>
-
-    {# Tab Content Panels #}
+<div class="strategy-grid">
     {% for key, label, signals, total in strategies %}
-    <div class="strategy-tab-panel {% if loop.first %}active{% endif %}" id="stab-{{ key }}" role="tabpanel">
+    <div class="card strategy-card">
+        <div class="strategy-card-header">
+            <span class="strategy-card-title">{{ label }}</span>
+            <span class="strategy-card-count">{{ signals | length }}/{{ total }}</span>
+        </div>
         {% if signals %}
-        <table class="signal-mini-table">
+        <table class="signal-compact-table">
             <thead>
                 <tr>
                     <th class="col-ticker">Ticker</th>
@@ -96,8 +86,8 @@
                 </tr>
             </thead>
             <tbody>
-                {% for s in signals[:10] %}
-                <tr class="signal-mini-row" onclick="location.href='/ticker/{{ s.symbol }}'">
+                {% for s in signals[:5] %}
+                <tr class="signal-compact-row" onclick="location.href='/ticker/{{ s.symbol }}'">
                     <td class="col-ticker">
                         <a href="/ticker/{{ s.symbol }}">{{ s.symbol }}</a>
                     </td>
@@ -109,21 +99,15 @@
                         {% endif %}
                     </td>
                     <td class="col-score-cell">
-                        <div class="score-inline">
-                            <div class="score-bar-mini">
-                                <div class="score-bar-mini-fill {% if s.score >= 70 %}green{% elif s.score >= 50 %}yellow{% elif s.score >= 35 %}orange{% else %}red{% endif %}"
-                                     style="width: {{ s.score }}%"></div>
-                            </div>
-                            <span class="score-num {{ s.score | score_color }}">{{ s.score | fmt_score }}</span>
-                        </div>
+                        <span class="score-num {{ s.score | score_color }}">{{ s.score | fmt_score }}</span>
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        {% if signals | length > 10 %}
+        {% if signals | length > 5 %}
         <div class="signal-show-all">
-            <a href="/watchlist?signal_only=true">{{ _t('dashboard.view_all', count=signals|length) if _t else ('View all ' ~ signals|length ~ ' →') }}</a>
+            <a href="/watchlist?strategy={{ key }}&signal_only=true">{{ _t('dashboard.view_all', count=signals|length) if _t else ('View all ' ~ signals|length ~ ' →') }}</a>
         </div>
         {% endif %}
         {% else %}
@@ -181,23 +165,6 @@
 
 {% block scripts %}
 <script>
-// Strategy Tab Switch
-document.querySelectorAll('.strategy-tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const target = btn.dataset.target;
-        btn.closest('.strategy-tab-nav').querySelectorAll('.strategy-tab-btn').forEach(b => {
-            b.classList.remove('active');
-            b.setAttribute('aria-selected', 'false');
-        });
-        btn.classList.add('active');
-        btn.setAttribute('aria-selected', 'true');
-        btn.closest('.strategy-signals-card').querySelectorAll('.strategy-tab-panel').forEach(p => {
-            p.classList.remove('active');
-        });
-        document.getElementById(target).classList.add('active');
-    });
-});
-
 // Market Pulse 30-Day Trend Chart
 const pulseData = {{ pulse_history | tojson }};
 if (pulseData && pulseData.length > 0) {

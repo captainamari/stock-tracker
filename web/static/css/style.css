@@ -319,87 +319,6 @@ a:hover {
     animation: dist-pulse 2s ease-in-out infinite;
 }
 
-/* ---------- Strategy Grid ---------- */
-.strategy-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    margin-bottom: 20px;
-}
-
-@media (max-width: 900px) {
-    .strategy-grid {
-        grid-template-columns: 1fr;
-    }
-}
-
-.strategy-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 20px;
-    box-shadow: var(--shadow);
-}
-
-.strategy-card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-}
-
-.strategy-card-header h3 {
-    font-size: 15px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.strategy-count {
-    font-size: 13px;
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-}
-
-.signal-list {
-    list-style: none;
-}
-
-.signal-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 0;
-    border-bottom: 1px solid var(--border-light);
-    font-size: 14px;
-}
-.signal-item:last-child {
-    border-bottom: none;
-}
-
-.signal-item .ticker-link {
-    font-weight: 600;
-    font-family: var(--font-mono);
-    min-width: 60px;
-}
-
-.signal-item .name {
-    color: var(--text-secondary);
-    font-size: 12px;
-    flex: 1;
-    margin: 0 8px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.signal-item .score {
-    font-family: var(--font-mono);
-    font-weight: 600;
-    min-width: 32px;
-    text-align: right;
-}
 
 .empty-state {
     text-align: center;
@@ -1117,162 +1036,111 @@ a:hover {
 }
 
 /* ============================================================
-   Dashboard — Strategy Signals Tab + Mini Table
+   Dashboard — Strategy Signals 2×2 Grid
    ============================================================ */
-.strategy-signals-card {
+.strategy-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.strategy-card {
     padding: 0;
     overflow: hidden;
-}
-
-.strategy-tab-nav {
     display: flex;
-    border-bottom: 2px solid var(--border);
-    background: var(--bg-secondary);
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    flex-direction: column;
 }
 
-.strategy-tab-btn {
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    font-size: 13px;
-    font-weight: 500;
-    padding: 12px 20px;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    transition: all 0.15s;
-    white-space: nowrap;
+.strategy-card-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-}
-.strategy-tab-btn:hover {
-    color: var(--text-primary);
-    background: var(--bg-hover);
-}
-.strategy-tab-btn.active {
-    color: var(--blue);
-    border-bottom-color: var(--blue);
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-light);
+    background: var(--bg-secondary);
 }
 
-.strategy-tab-count {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    background: var(--bg-hover);
-    padding: 1px 7px;
-    border-radius: 10px;
-    color: var(--text-dim);
+.strategy-card-title {
+    font-size: 14px;
     font-weight: 600;
-}
-.strategy-tab-btn.active .strategy-tab-count {
-    background: var(--blue-bg);
-    color: var(--blue);
+    color: var(--text-primary);
 }
 
-.strategy-tab-panel {
-    display: none;
-    padding: 0;
-}
-.strategy-tab-panel.active {
-    display: block;
-    animation: tabFadeIn 0.2s ease;
+.strategy-card-count {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+    padding: 2px 8px;
+    border-radius: 10px;
 }
 
-/* Signal Mini Table */
-.signal-mini-table {
+/* Compact Signal Table (for grid cards) */
+.signal-compact-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
 }
-.signal-mini-table thead th {
+.signal-compact-table thead th {
     text-align: left;
-    padding: 10px 20px;
-    font-size: 11px;
+    padding: 8px 16px;
+    font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--text-secondary);
+    color: var(--text-dim);
     border-bottom: 1px solid var(--border-light);
-    background: var(--bg-card);
 }
-.signal-mini-table thead th.col-score-header {
+.signal-compact-table thead th.col-score-header {
     text-align: right;
-    padding-right: 20px;
+    padding-right: 16px;
 }
-.signal-mini-table thead th.col-price {
+.signal-compact-table thead th.col-price {
     text-align: right;
 }
 
-.signal-mini-row {
+.signal-compact-row {
     cursor: pointer;
     transition: background 0.1s;
 }
-.signal-mini-row:hover {
+.signal-compact-row:hover {
     background: var(--bg-hover);
 }
-.signal-mini-row td {
-    padding: 10px 20px;
+.signal-compact-row td {
+    padding: 7px 16px;
     border-bottom: 1px solid var(--border-light);
     vertical-align: middle;
 }
-.signal-mini-row:last-child td {
+.signal-compact-row:last-child td {
     border-bottom: none;
 }
 
-.signal-mini-table .col-ticker {
+.signal-compact-table .col-ticker {
     font-weight: 600;
     font-family: var(--font-mono);
     font-size: 13px;
-    width: 100px;
 }
-.signal-mini-table .col-ticker a {
+.signal-compact-table .col-ticker a {
     color: var(--text-primary);
     text-decoration: none;
 }
-.signal-mini-table .col-ticker a:hover {
+.signal-compact-table .col-ticker a:hover {
     color: var(--blue);
 }
 
-.signal-mini-table .col-price {
+.signal-compact-table .col-price {
     font-family: var(--font-mono);
     font-size: 13px;
     color: var(--text-secondary);
     text-align: right;
-    width: 100px;
 }
 
-.signal-mini-table .col-score-cell {
+.signal-compact-table .col-score-cell {
     text-align: right;
-    width: 160px;
+    padding-right: 16px;
 }
-
-.score-inline {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    justify-content: flex-end;
-}
-
-.score-bar-mini {
-    width: 80px;
-    height: 5px;
-    background: var(--bg-hover);
-    border-radius: 3px;
-    overflow: hidden;
-    flex-shrink: 0;
-}
-.score-bar-mini-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.3s ease;
-}
-.score-bar-mini-fill.green { background: var(--green); }
-.score-bar-mini-fill.yellow { background: var(--yellow); }
-.score-bar-mini-fill.orange { background: var(--orange); }
-.score-bar-mini-fill.red { background: var(--red); }
 
 .score-num {
     font-family: var(--font-mono);
@@ -1946,21 +1814,11 @@ a:hover {
         font-size: 12px;
         padding: 6px 12px;
     }
-    .strategy-tab-btn {
-        font-size: 12px;
-        padding: 10px 12px;
+    .strategy-grid {
+        grid-template-columns: 1fr;
     }
-    .strategy-tab-count {
-        font-size: 10px;
-    }
-    .signal-mini-table thead th,
-    .signal-mini-row td {
-        padding: 8px 12px;
-    }
-    .score-bar-mini {
-        width: 50px;
-    }
-    .signal-mini-table .col-score-cell {
-        width: 120px;
+    .signal-compact-table thead th,
+    .signal-compact-row td {
+        padding: 6px 12px;
     }
 }
