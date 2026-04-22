@@ -36,6 +36,7 @@ def _create_env() -> Environment:
     env.filters['score_emoji_tp'] = score_emoji_tp
     env.filters['score_emoji_vcp'] = score_emoji_vcp
     env.filters['score_emoji_bf'] = score_emoji_bf
+    env.filters['score_emoji_bc'] = score_emoji_bc
     env.filters['chg_emoji'] = chg_emoji
     env.filters['score_bar'] = score_bar
     env.filters['progress_bar'] = progress_bar
@@ -110,6 +111,21 @@ def score_emoji_bf(score) -> str:
         return "🟢🟢"
     elif score >= 40:
         return "🟢"
+    elif score >= 20:
+        return "🟡"
+    else:
+        return "⚪"
+
+
+def score_emoji_bc(score) -> str:
+    """Buying Checklist 评分 → emoji"""
+    score = score or 0
+    if score >= 80:
+        return "📋🔥🔥"
+    elif score >= 60:
+        return "📋🔥"
+    elif score >= 40:
+        return "📋"
     elif score >= 20:
         return "🟡"
     else:

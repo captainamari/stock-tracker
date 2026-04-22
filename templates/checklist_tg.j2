@@ -1,0 +1,63 @@
+<b>📋 Buying Checklist</b>  {{ timestamp }}
+Scanned {{ total_analyzed }} stocks
+📋 {{ signal_stocks|length }} Ready to Buy · 🟡 {{ near_stocks|length }} Almost There
+
+{% if changes %}
+<b>🔔 Changes</b>
+{% for c in changes %}
+{% if c.type == 'new_signal' %}
+🟢 <b>{{ c.ticker }}</b> → Buy Ready (Score {{ c.bc_score }})
+{% elif c.type == 'lost_signal' %}
+⚪ <b>{{ c.ticker }}</b> lost buy signal
+{% endif %}
+{% endfor %}
+
+{% endif %}
+{% if signal_stocks %}
+<b>📋 Buy-Ready Stocks</b>
+
+{% for s in signal_stocks %}
+{% set m = s.metrics %}
+{% set imp = {'green': '🟢', 'red': '🔴', 'blue': '🔵'}.get(s.weekly_impulse, '⚪') %}
+{{ loop.index }}. <b>{{ s.ticker }}</b> ${{ s.price }} {{ s.bc_score|score_emoji_bc }} {{ s.bc_score }}pts ({{ s.passed }}/{{ s.total }})
+   <i>{{ s.sector }}</i> · {{ imp }} Week {{ s.impulse_streak }}w · High {{ m.pct_from_52w_high|fmt_pct }}
+{% set parts = [] %}
+{% if m.rsi is not none %}{% if parts.append("RSI " ~ "%.0f"|format(m.rsi)) %}{% endif %}{% endif %}
+{% if m.vol_ratio is not none %}{% if parts.append("Vol " ~ "%.2f"|format(m.vol_ratio) ~ "x") %}{% endif %}{% endif %}
+{% if s.chg_5d is not none %}{% if parts.append("5D " ~ s.chg_5d|fmt_pct) %}{% endif %}{% endif %}
+{% if s.chg_20d is not none %}{% if parts.append("20D " ~ s.chg_20d|fmt_pct) %}{% endif %}{% endif %}
+{% if parts %}
+   {{ parts|join(' · ') }}
+{% endif %}
+{% set badges = [] %}
+{% if m.stage2_active %}{% if badges.append("Stage 2 ✅") %}{% endif %}{% endif %}
+{% if m.sma50 is not none and m.sma200 is not none and m.sma50 > m.sma200 %}{% if badges.append("Golden Cross") %}{% endif %}{% endif %}
+{% if m.macd_histogram is not none and m.macd_hist_prev is not none and m.macd_histogram > m.macd_hist_prev %}{% if badges.append("MACD ↑") %}{% endif %}{% endif %}
+{% if badges %}
+   🏷 {{ badges|join(' · ') }}
+{% endif %}
+   Support: MA10 ${{ s.sma10 }}{% if s.sma50 %} · MA50 ${{ s.sma50 }}{% endif %}
+
+{% endfor %}
+{% else %}
+<b>⚠️ No buy-ready stocks</b>
+
+{% endif %}
+{% if near_stocks %}
+<b>🟡 Almost Ready</b> ({{ near_stocks|length }})
+
+{% for s in near_stocks %}
+{% set failed_keys = [] %}
+{% for k, v in s.conditions.items() if v is not none and not v %}
+{% if failed_keys.append(k) %}{% endif %}
+{% endfor %}
+{% set filled = "▓" * s.passed ~ "░" * (s.total - s.passed) %}
+{% set imp = {'green': '🟢', 'red': '🔴', 'blue': '🔵'}.get(s.weekly_impulse, '⚪') %}
+<b>{{ s.ticker }}</b> ${{ s.price }} {{ filled }} {{ s.passed }}/{{ s.total }} {{ imp }}
+{% for fk in failed_keys[:3] %}
+{% set diag = s.condition_details.get(fk, fk) if s.condition_details else fk %}
+  └ ❌ {{ diag|tg_escape }}
+{% endfor %}
+
+{% endfor %}
+{% endif %}

@@ -1,0 +1,52 @@
+# Buying Checklist Report
+
+**Time**: {{ timestamp }}
+**Analyzed Count**: {{ total_analyzed }}
+
+{% if changes %}
+## Status Changes
+
+{% for c in changes %}
+{% if c.type == 'new_signal' %}
+- 🟢 New buy signal: **{{ c.ticker }}** (Score {{ c.bc_score }}/100)
+{% elif c.type == 'lost_signal' %}
+- ⚪ Lost buy signal: **{{ c.ticker }}**
+{% endif %}
+{% endfor %}
+
+{% endif %}
+{% if signal_stocks %}
+## Buy-Ready Stocks
+
+| # | Ticker | Name | Price | Score | Conditions | Impulse | RSI | Vol Ratio | From High | 5D | 20D |
+|---|--------|------|-------|-------|------------|---------|-----|-----------|-----------|-----|-----|
+{% for s in signal_stocks %}
+{% set m = s.metrics %}
+{% set rsi_str = "%.0f"|format(m.rsi) if m.rsi is not none else "N/A" %}
+{% set vol_str = "%.2f"|format(m.vol_ratio) if m.vol_ratio is not none else "N/A" %}
+{% set hi = m.pct_from_52w_high|fmt_pct if m.pct_from_52w_high is not none else "N/A" %}
+{% set chg5 = s.chg_5d|fmt_pct if s.chg_5d is not none else "N/A" %}
+{% set chg20 = s.chg_20d|fmt_pct if s.chg_20d is not none else "N/A" %}
+| {{ loop.index }} | **{{ s.ticker }}** | {{ s.name }} | ${{ s.price }} | {{ s.bc_score }}/100 | {{ s.passed }}/{{ s.total }} | {{ s.weekly_impulse }} ({{ s.impulse_streak }}w) | {{ rsi_str }} | {{ vol_str }} | {{ hi }} | {{ chg5 }} | {{ chg20 }} |
+{% endfor %}
+
+{% else %}
+## No Buy-Ready Stocks
+
+{% endif %}
+{% if near_stocks %}
+## Almost Ready (Watchlist)
+
+{% for s in near_stocks %}
+{% set failed_keys = [] %}
+{% for k, v in s.conditions.items() if v is not none and not v %}
+{% if failed_keys.append(k) %}{% endif %}
+{% endfor %}
+### {{ s.ticker }} ({{ s.name }}) — {{ s.passed }}/{{ s.total }} · ${{ s.price }} · {{ s.weekly_impulse }}
+{% for fk in failed_keys %}
+{% set diag = s.condition_details.get(fk, fk) if s.condition_details else fk %}
+- ❌ {{ fk }}: {{ diag }}
+{% endfor %}
+
+{% endfor %}
+{% endif %}

@@ -269,6 +269,7 @@ def send_strategy_report(
     save_to_disk: bool = True,
     strategy_prefix: str = "",
     md_template_name: Optional[str] = None,
+    force: bool = False,
 ) -> Dict[str, Any]:
     """
     High-level interface: render template → push Telegram → optional disk save.
@@ -282,6 +283,7 @@ def send_strategy_report(
         save_to_disk: Whether to also save MD/TG files to reports/daily/
         strategy_prefix: File name prefix for save_reports()
         md_template_name: MD template name for disk save (e.g. 'pulse_md.j2')
+        force: If True, skip idempotent check and re-send even if already sent
 
     Returns:
         {
@@ -306,12 +308,15 @@ def send_strategy_report(
         'error': None,
     }
 
-    # Idempotent check
-    if strategy_name and is_notification_sent(notify_date, strategy_name):
+    # Idempotent check (skip when force=True)
+    if not force and strategy_name and is_notification_sent(notify_date, strategy_name):
         logger.info(f"[{strategy_name}] Already sent for {notify_date}, skipping")
         result['success'] = True
         result['error'] = 'already_sent'
         return result
+
+    if force and strategy_name:
+        logger.info(f"[{strategy_name}] Force mode — re-sending for {notify_date}")
 
     # Render template
     try:
@@ -331,7 +336,8 @@ def send_strategy_report(
         result['message_ids'] = success_ids
         result['segments'] = len(message_ids)
 
-        if success_ids:
+        if len(success_ids) == len(message_ids) and success_ids:
+            # All segments sent successfully
             result['success'] = True
             if strategy_name:
                 record_notification(
@@ -339,6 +345,21 @@ def send_strategy_report(
                     message_id=','.join(success_ids),
                 )
             logger.info(f"[{strategy_name}] Sent {len(success_ids)}/{len(message_ids)} segments")
+        elif success_ids:
+            # Partial success — some segments failed, mark as 'partial'
+            # so re-run will retry (is_notification_sent only considers 'sent')
+            result['success'] = True
+            result['error'] = f'partial: {len(success_ids)}/{len(message_ids)} segments delivered'
+            if strategy_name:
+                record_notification(
+                    notify_date, 'telegram', strategy_name, 'partial',
+                    message_id=','.join(success_ids),
+                    error_msg=f'{len(success_ids)}/{len(message_ids)} segments delivered',
+                )
+            logger.warning(
+                f"[{strategy_name}] Partial send: {len(success_ids)}/{len(message_ids)} segments. "
+                f"Will retry on next run."
+            )
         else:
             result['error'] = 'All segments failed to send'
             if strategy_name:
@@ -373,10 +394,11 @@ def send_text_message(
     text: str,
     strategy_name: str = "",
     notify_date: Optional[str] = None,
+    force: bool = False,
 ) -> bool:
     """
     Send a plain text/HTML message (no template rendering).
-    With idempotent check.
+    With idempotent check (skippable via force=True).
 
     Returns True if sent successfully.
     """
@@ -386,20 +408,45 @@ def send_text_message(
     if notify_date is None:
         notify_date = datetime.now().strftime('%Y-%m-%d')
 
-    if strategy_name and is_notification_sent(notify_date, strategy_name):
+    if not force and strategy_name and is_notification_sent(notify_date, strategy_name):
         logger.info(f"[{strategy_name}] Already sent for {notify_date}, skipping")
         return True
 
+    if force and strategy_name:
+        logger.info(f"[{strategy_name}] Force mode — re-sending for {notify_date}")
+
     try:
         message_ids = notifier.send(text)
-        success = any(mid is not None for mid in message_ids)
-        if strategy_name:
-            record_notification(
-                notify_date, 'telegram', strategy_name,
-                'sent' if success else 'failed',
-                message_id=','.join(str(m) for m in message_ids if m),
+        success_ids = [mid for mid in message_ids if mid is not None]
+        total = len(message_ids)
+
+        if len(success_ids) == total and success_ids:
+            # All segments delivered
+            if strategy_name:
+                record_notification(
+                    notify_date, 'telegram', strategy_name, 'sent',
+                    message_id=','.join(str(m) for m in success_ids),
+                )
+            return True
+        elif success_ids:
+            # Partial delivery — mark as 'partial' so next run retries
+            if strategy_name:
+                record_notification(
+                    notify_date, 'telegram', strategy_name, 'partial',
+                    message_id=','.join(str(m) for m in success_ids),
+                    error_msg=f'{len(success_ids)}/{total} segments delivered',
+                )
+            logger.warning(
+                f"[{strategy_name}] Partial: {len(success_ids)}/{total} segments. Will retry."
             )
-        return success
+            return True
+        else:
+            if strategy_name:
+                record_notification(
+                    notify_date, 'telegram', strategy_name, 'failed',
+                    error_msg='All segments failed',
+                )
+            return False
     except Exception as e:
         logger.error(f"[{strategy_name}] Send failed: {e}")
         if strategy_name:

@@ -95,7 +95,7 @@ STRATEGY_SCRIPTS = {
 }
 
 # Strategies that have Telegram templates and should be pushed
-NOTIFY_STRATEGIES = ['market_pulse', 'stage2', 'vcp', 'bottom_fisher']
+NOTIFY_STRATEGIES = ['market_pulse', 'stage2', 'vcp', 'bottom_fisher', 'buying_checklist']
 
 
 # ============================================================
@@ -519,12 +519,83 @@ def _build_bottom_fisher_context(date_str: str) -> dict:
     )
 
 
+def _build_buying_checklist_context(date_str: str) -> dict:
+    """Build template context for Buying Checklist from DB data."""
+    results = get_strategy_results('buying_checklist', date_str=date_str, limit=500)
+    if not results:
+        return {}
+
+    changes_raw = get_signal_changes(strategy='buying_checklist', date_str=date_str, limit=100)
+
+    signal_stocks = []
+    near_stocks = []
+
+    for r in results:
+        metrics = r.get('metrics', {})
+        item = {
+            'ticker': r['symbol'],
+            'name': metrics.get('name', r['symbol']),
+            'sector': metrics.get('sector', ''),
+            'price': metrics.get('price', 0),
+            'is_bc_signal': bool(r['is_signal']),
+            'bc_score': r['score'],
+            'passed': r['passed'],
+            'total': r['total'],
+            'conditions': r.get('conditions', {}),
+            'condition_details': r.get('condition_details', {}),
+            'weekly_impulse': metrics.get('weekly_impulse', ''),
+            'weekly_trend': metrics.get('weekly_trend', ''),
+            'impulse_streak': metrics.get('impulse_streak', 0),
+            'sma10': metrics.get('sma10'),
+            'sma50': metrics.get('sma50'),
+            'sma200': metrics.get('sma200'),
+            'chg_5d': metrics.get('chg_5d'),
+            'chg_20d': metrics.get('chg_20d'),
+            'metrics': {
+                'pct_from_52w_high': metrics.get('pct_from_52w_high'),
+                'pct_from_52w_low': metrics.get('pct_from_52w_low'),
+                'rsi': metrics.get('rsi'),
+                'vol_ratio': metrics.get('vol_ratio'),
+                'macd_histogram': metrics.get('macd_histogram'),
+                'macd_hist_prev': metrics.get('macd_hist_prev'),
+                'stage2_active': metrics.get('stage2_active', False),
+                'sma50': metrics.get('sma50'),
+                'sma200': metrics.get('sma200'),
+            },
+        }
+
+        if r['is_signal']:
+            signal_stocks.append(item)
+        elif r['passed'] >= 5:  # near_signal_min
+            near_stocks.append(item)
+
+    signal_stocks.sort(key=lambda x: x.get('bc_score', 0), reverse=True)
+    near_stocks.sort(key=lambda x: x['passed'], reverse=True)
+
+    changes = []
+    for c in changes_raw:
+        changes.append({
+            'ticker': c['symbol'],
+            'type': 'new_signal' if c['change_type'] in ('entry', 'new_signal') else 'lost_signal',
+            'bc_score': c.get('score'),
+        })
+
+    return dict(
+        timestamp=datetime.now().strftime('%m/%d %H:%M'),
+        total_analyzed=len(results),
+        signal_stocks=signal_stocks,
+        near_stocks=near_stocks,
+        changes=changes,
+    )
+
+
 def _build_daily_summary(date_str: str, pipeline_results: dict) -> str:
     """Build a daily summary message with cross-strategy overview."""
     pulse_list = get_market_pulse(date_str=date_str)
     stage2_results = get_strategy_results('stage2', date_str=date_str, signal_only=True, limit=500)
     vcp_results = get_strategy_results('vcp', date_str=date_str, signal_only=True, limit=500)
     bf_results = get_strategy_results('bottom_fisher', date_str=date_str, signal_only=True, limit=500)
+    bc_results = get_strategy_results('buying_checklist', date_str=date_str, signal_only=True, limit=500)
     today_changes = get_signal_changes(date_str=date_str, limit=200)
 
     # Regime
@@ -572,6 +643,12 @@ def _build_daily_summary(date_str: str, pipeline_results: dict) -> str:
     else:
         lines.append("🎣 Bottom Signals: 0")
 
+    if bc_results:
+        bc_tickers = ', '.join(r['symbol'] for r in bc_results[:5])
+        lines.append(f"📋 Buy Ready: {len(bc_results)} — {bc_tickers}")
+    else:
+        lines.append("📋 Buy Ready: 0")
+
     if new_entries:
         lines.append("")
         lines.append(f"<b>🔔 New Entries ({len(new_entries)})</b>")
@@ -599,10 +676,11 @@ def _build_daily_summary(date_str: str, pipeline_results: dict) -> str:
 
 # Context builders map
 CONTEXT_BUILDERS = {
-    'market_pulse': (_build_market_pulse_context, 'pulse_tg.j2', 'pulse_md.j2', '_pulse'),
-    'stage2':       (_build_stage2_context,       'stage2_tg.j2', 'stage2_md.j2', ''),
-    'vcp':          (_build_vcp_context,           'vcp_tg.j2',    'vcp_md.j2',    '_vcp'),
-    'bottom_fisher': (_build_bottom_fisher_context, 'bottom_tg.j2', 'bottom_md.j2', '_bottom'),
+    'market_pulse':     (_build_market_pulse_context,        'pulse_tg.j2',     'pulse_md.j2',     '_pulse'),
+    'stage2':           (_build_stage2_context,              'stage2_tg.j2',    'stage2_md.j2',    ''),
+    'vcp':              (_build_vcp_context,                 'vcp_tg.j2',       'vcp_md.j2',       '_vcp'),
+    'bottom_fisher':    (_build_bottom_fisher_context,       'bottom_tg.j2',    'bottom_md.j2',    '_bottom'),
+    'buying_checklist': (_build_buying_checklist_context,    'checklist_tg.j2', 'checklist_md.j2', '_checklist'),
 }
 
 
@@ -638,6 +716,7 @@ def run_phase3_notification(
                 notifier, summary_text,
                 strategy_name='daily_summary',
                 notify_date=date_str,
+                force=force,
             )
             results['daily_summary'] = 'sent' if success else 'failed'
             logger.info(f"[daily_summary] {'Sent' if success else 'Failed'}")
@@ -674,7 +753,7 @@ def run_phase3_notification(
                 results[strategy] = 'no_data'
                 continue
 
-            # Send via notifier (with idempotent check inside)
+            # Send via notifier (with idempotent check inside, force bypasses)
             result = send_strategy_report(
                 notifier=notifier,
                 template_name=tg_template,
@@ -684,6 +763,7 @@ def run_phase3_notification(
                 save_to_disk=True,
                 strategy_prefix=prefix,
                 md_template_name=md_template,
+                force=force,
             )
 
             if result['error'] == 'already_sent':
