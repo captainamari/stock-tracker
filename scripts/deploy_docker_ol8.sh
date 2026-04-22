@@ -382,46 +382,31 @@ init_data() {
     log_step "Step 6: 初始化数据库 & 数据"
     cd "$PROJECT_DIR"
 
-    # 定义步骤（每步允许失败但继续执行后续步骤）
     local step_failed=false
 
-    log_info "[1/6] 初始化数据库 Schema..."
+    log_info "[1/3] 初始化数据库 Schema..."
     if ! sudo docker compose exec -T web python -m lib.db init; then
-        log_warn "[1/6] 数据库 Schema 初始化失败（可能已存在）"
+        log_warn "[1/3] 数据库 Schema 初始化失败（可能已存在）"
         step_failed=true
     fi
 
-    log_info "[2/6] 同步观察列表..."
+    log_info "[2/3] 同步观察列表..."
     if ! sudo docker compose exec -T web python -m lib.config; then
-        log_warn "[2/6] 同步观察列表失败"
+        log_warn "[2/3] 同步观察列表失败"
         step_failed=true
     fi
 
-    log_info "[3/6] 拉取价格数据（可能需要几分钟）..."
-    if ! sudo docker compose exec -T web python scripts/save_prices_yfinance.py --mode all; then
-        log_warn "[3/6] 拉取价格数据失败（可稍后通过 cron 自动重试）"
+    log_info "[3/3] 运行 Daily Pipeline（数据采集 + 策略计算，跳过推送）..."
+    log_info "      包含: 价格拉取 → Market Pulse → Stage 2 → VCP → Bottom Fisher → Buying Checklist"
+    if ! sudo docker compose exec -T web python scripts/daily_pipeline.py --force --no-notify; then
+        log_warn "[3/3] Pipeline 部分步骤失败（非致命，可稍后重试）"
         step_failed=true
     fi
-
-    log_info "[4/6] 运行 Market Pulse..."
-    if ! sudo docker compose exec -T web python scripts/market_pulse.py --cron; then
-        log_warn "[4/6] Market Pulse 失败（非致命）"
-        step_failed=true
-    fi
-
-    log_info "[5/6] 运行 Stage 2 Monitor..."
-    if ! sudo docker compose exec -T web python scripts/stage2_monitor.py --cron; then
-        log_warn "[5/6] Stage 2 Monitor 失败（非致命）"
-        step_failed=true
-    fi
-
-    log_info "[6/6] 运行策略扫描..."
-    sudo docker compose exec -T web python scripts/vcp_scanner.py --cron || log_warn "VCP Scanner 失败（非致命）"
-    sudo docker compose exec -T web python scripts/bottom_fisher.py --cron || log_warn "Bottom Fisher 失败（非致命）"
 
     if [ "$step_failed" = true ]; then
         log_warn "部分数据初始化步骤失败，服务仍可运行。可稍后执行:"
         log_info "  bash scripts/deploy_docker_ol8.sh --init-data"
+        log_info "  或单独重试推送: sudo docker compose exec -T web python scripts/daily_pipeline.py --notify-only"
     else
         log_info "✅ 数据初始化完成"
     fi
@@ -653,57 +638,38 @@ setup_cron() {
     cat > "$CRON_SCRIPT" << 'CRONEOF'
 #!/bin/bash
 # Docker 版每日数据更新脚本 (在宿主机通过 cron 调用)
-# 适用于 Oracle Linux 8
+# 委托给 daily_pipeline.py 三阶段 Pipeline 执行:
+#   Phase 1: 数据采集（价格拉取）
+#   Phase 2: 策略计算 + DB 持久化
+#   Phase 3: Telegram 推送（从 DB 读取，幂等）
 set -euo pipefail
 
 PROJECT_DIR="/home/opc/stock-tracker"
 cd "$PROJECT_DIR"
 
-LOG_FILE="logs/daily_update_$(date +%Y%m%d).log"
-mkdir -p logs
-
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
-
-log "========================================"
-log "Docker 每日数据更新开始"
-log "========================================"
+# 加载 .env（Telegram token 等配置）
+if [ -f ".env" ]; then
+    set -a
+    source .env
+    set +a
+fi
 
 # 检查容器是否在运行
 if ! sudo docker compose ps --status running | grep -q "web"; then
-    log "⚠️ 容器未运行，尝试启动..."
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ⚠️ 容器未运行，尝试启动..."
     sudo docker compose up -d
     sleep 10
     if ! sudo docker compose ps --status running | grep -q "web"; then
-        log "❌ 容器启动失败，退出"
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ 容器启动失败，退出"
         exit 1
     fi
 fi
 
-EXEC="sudo docker compose exec -T web"
-
-log "[1/5] 拉取价格数据..."
-$EXEC python scripts/save_prices_yfinance.py --mode all >> "$LOG_FILE" 2>&1 && log "[1/5] ✅ 完成" || log "[1/5] ⚠️ 失败"
-
-log "[2/5] Market Pulse..."
-$EXEC python scripts/market_pulse.py --cron >> "$LOG_FILE" 2>&1 && log "[2/5] ✅ 完成" || log "[2/5] ⚠️ 失败"
-
-log "[3/5] Stage 2 Monitor..."
-$EXEC python scripts/stage2_monitor.py --cron >> "$LOG_FILE" 2>&1 && log "[3/5] ✅ 完成" || log "[3/5] ⚠️ 失败"
-
-log "[4/5] VCP Scanner..."
-$EXEC python scripts/vcp_scanner.py --cron >> "$LOG_FILE" 2>&1 && log "[4/5] ✅ 完成" || log "[4/5] ⚠️ 失败"
-
-log "[5/5] Bottom Fisher..."
-$EXEC python scripts/bottom_fisher.py --cron >> "$LOG_FILE" 2>&1 && log "[5/5] ✅ 完成" || log "[5/5] ⚠️ 失败"
-
-log "========================================"
-log "每日更新完成！"
-log "========================================"
-
-# 清理 30 天前的日志
-find "$PROJECT_DIR/logs" -name "daily_update_*.log" -mtime +30 -delete 2>/dev/null || true
+# 执行三阶段 Pipeline（daily_pipeline.py 内部自带日志和幂等控制）
+exec sudo docker compose exec -T \
+    -e TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}" \
+    -e TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}" \
+    web python scripts/daily_pipeline.py "$@"
 CRONEOF
     chmod +x "$CRON_SCRIPT"
 
@@ -713,7 +679,8 @@ CRONEOF
 
     # 验证 cron 任务已添加
     if crontab -l 2>/dev/null | grep -q "docker_daily_update.sh"; then
-        log_info "Cron 任务已设置: 每个交易日 UTC ${CRON_HOUR}:$(printf '%02d' "$CRON_MINUTE") 执行数据更新 ✅"
+        log_info "Cron 任务已设置: 每个交易日 UTC ${CRON_HOUR}:$(printf '%02d' "$CRON_MINUTE") 执行 Pipeline ✅"
+        log_info "  Pipeline 包含: 数据采集 → 策略计算 → Telegram 推送"
     else
         log_warn "Cron 任务可能未添加成功，请手动检查: crontab -l"
     fi
@@ -835,10 +802,13 @@ main() {
             fi
             echo ""
             echo "  常用命令:"
-            echo "    sudo docker compose logs -f                      # 查看实时日志"
-            echo "    sudo docker compose restart                       # 重启服务"
-            echo "    bash scripts/deploy_docker_ol8.sh --update       # 更新部署"
-            echo "    bash scripts/deploy_docker_ol8.sh --status       # 查看状态"
+            echo "    sudo docker compose logs -f                                                  # 查看实时日志"
+            echo "    sudo docker compose restart                                                   # 重启服务"
+            echo "    bash scripts/deploy_docker_ol8.sh --update                                   # 更新部署"
+            echo "    bash scripts/deploy_docker_ol8.sh --status                                   # 查看状态"
+            echo "    sudo docker compose exec -T web python scripts/daily_pipeline.py             # 手动执行 Pipeline"
+            echo "    sudo docker compose exec -T web python scripts/daily_pipeline.py --dry-run   # 测试推送（不发送）"
+            echo "    sudo docker compose exec -T web python scripts/daily_pipeline.py --test-bot  # 测试 Telegram Bot"
             echo ""
             ;;
         *)

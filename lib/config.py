@@ -22,6 +22,11 @@ if str(_ROOT) not in sys.path:
 
 from lib.db import upsert_watchlist, get_watchlist, init_db
 from lib.models import TickerInfo
+try:
+    from lib.encoding_fix import ensure_utf8_output
+    ensure_utf8_output()
+except ImportError:
+    pass  # encoding fix already applied via lib.db import
 
 # 配置文件路径
 CONFIG_DIR = Path(__file__).parent.parent / "config"

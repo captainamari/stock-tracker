@@ -8,6 +8,9 @@ dist/
 build/
 *.egg
 
+# Environment secrets
+.env
+
 # Virtual environment
 venv/
 .venv/
@@ -37,3 +40,5 @@ data/prices/*.csv
 
 # CodeBuddy
 .codebuddy/
+
+reports/daily/

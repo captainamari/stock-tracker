@@ -27,6 +27,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from lib.encoding_fix import ensure_utf8_output
+ensure_utf8_output()
+
 from lib.db import init_db, upsert_prices, get_price_count, get_latest_price_date
 from lib.config import load_config, parse_tickers, sync_watchlist
 

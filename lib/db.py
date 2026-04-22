@@ -12,10 +12,34 @@ Stock Tracker — SQLite 数据访问层
 import sqlite3
 import json
 import os
+import sys
+import io
 from datetime import datetime, date
 from pathlib import Path
 from contextlib import contextmanager
 from typing import Optional, List, Dict, Any, Tuple
+
+# Cross-platform UTF-8 output fix (Windows GBK terminals)
+try:
+    from lib.encoding_fix import ensure_utf8_output
+except ImportError:
+    try:
+        from encoding_fix import ensure_utf8_output
+    except ImportError:
+        def ensure_utf8_output():
+            if sys.stdout and hasattr(sys.stdout, 'buffer'):
+                if sys.stdout.encoding and sys.stdout.encoding.lower().replace('-', '') != 'utf8':
+                    sys.stdout = io.TextIOWrapper(
+                        sys.stdout.buffer, encoding='utf-8', errors='replace',
+                        line_buffering=sys.stdout.line_buffering,
+                    )
+            if sys.stderr and hasattr(sys.stderr, 'buffer'):
+                if sys.stderr.encoding and sys.stderr.encoding.lower().replace('-', '') != 'utf8':
+                    sys.stderr = io.TextIOWrapper(
+                        sys.stderr.buffer, encoding='utf-8', errors='replace',
+                        line_buffering=sys.stderr.line_buffering,
+                    )
+ensure_utf8_output()
 
 
 # ============================================================
@@ -141,6 +165,33 @@ CREATE TABLE IF NOT EXISTS market_pulse (
     created_at      TEXT DEFAULT (datetime('now'))
 );
 
+-- Pipeline 执行记录：每次 daily_pipeline 的各步骤状态
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_date        TEXT NOT NULL,               -- YYYY-MM-DD
+    strategy        TEXT NOT NULL,               -- 'prices' | 'market_pulse' | 'stage2' | 'vcp' | 'bottom_fisher' | 'buying_checklist'
+    status          TEXT NOT NULL,               -- 'ok' | 'failed' | 'skipped' | 'running'
+    error_msg       TEXT,
+    duration        REAL,                        -- 执行耗时（秒）
+    created_at      TEXT DEFAULT (datetime('now')),
+    UNIQUE(run_date, strategy)
+);
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_date ON pipeline_runs(run_date);
+
+-- 通知推送记录：Telegram 推送的幂等日志
+CREATE TABLE IF NOT EXISTS notification_log (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    notify_date     TEXT NOT NULL,               -- YYYY-MM-DD
+    channel         TEXT NOT NULL,               -- 'telegram'
+    strategy        TEXT NOT NULL,               -- 'market_pulse' | 'stage2' | ... | 'daily_summary'
+    status          TEXT NOT NULL,               -- 'sent' | 'failed' | 'skipped'
+    message_id      TEXT,                        -- Telegram message ID（用于后续编辑/删除）
+    error_msg       TEXT,
+    created_at      TEXT DEFAULT (datetime('now')),
+    UNIQUE(notify_date, channel, strategy)
+);
+CREATE INDEX IF NOT EXISTS idx_notification_date ON notification_log(notify_date);
+
 -- 数据库版本追踪
 CREATE TABLE IF NOT EXISTS db_meta (
     key             TEXT PRIMARY KEY,
@@ -149,7 +200,7 @@ CREATE TABLE IF NOT EXISTS db_meta (
 );
 """
 
-DB_VERSION = "1.0.0"
+DB_VERSION = "1.1.0"
 
 
 # ============================================================
@@ -808,6 +859,100 @@ def get_prices_as_dataframe(symbol: str, min_rows: int = 0,
     df.drop(columns=['symbol'], inplace=True, errors='ignore')
 
     return df
+
+
+# ============================================================
+# Pipeline Runs (执行记录)
+# ============================================================
+def record_pipeline_run(
+    run_date: str,
+    strategy: str,
+    status: str,
+    error_msg: Optional[str] = None,
+    duration: Optional[float] = None,
+    db_path: Optional[Path] = None,
+):
+    """记录 pipeline 某步骤的执行状态（UPSERT）"""
+    with get_db(db_path) as conn:
+        conn.execute("""
+            INSERT INTO pipeline_runs (run_date, strategy, status, error_msg, duration)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(run_date, strategy) DO UPDATE SET
+                status = excluded.status,
+                error_msg = excluded.error_msg,
+                duration = excluded.duration,
+                created_at = datetime('now')
+        """, (run_date, strategy, status, error_msg, duration))
+
+
+def get_pipeline_runs(run_date: str, db_path: Optional[Path] = None) -> List[Dict]:
+    """获取某日所有 pipeline 步骤的执行记录"""
+    with get_db(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM pipeline_runs WHERE run_date = ? ORDER BY id",
+            (run_date,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def is_pipeline_step_completed(run_date: str, strategy: str,
+                               db_path: Optional[Path] = None) -> bool:
+    """检查某步骤今日是否已成功完成"""
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT status FROM pipeline_runs WHERE run_date = ? AND strategy = ?",
+            (run_date, strategy)
+        ).fetchone()
+        return row is not None and row['status'] == 'ok'
+
+
+# ============================================================
+# Notification Log (推送记录)
+# ============================================================
+def record_notification(
+    notify_date: str,
+    channel: str,
+    strategy: str,
+    status: str,
+    message_id: Optional[str] = None,
+    error_msg: Optional[str] = None,
+    db_path: Optional[Path] = None,
+):
+    """记录推送结果（UPSERT）"""
+    with get_db(db_path) as conn:
+        conn.execute("""
+            INSERT INTO notification_log
+                (notify_date, channel, strategy, status, message_id, error_msg)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(notify_date, channel, strategy) DO UPDATE SET
+                status = excluded.status,
+                message_id = excluded.message_id,
+                error_msg = excluded.error_msg,
+                created_at = datetime('now')
+        """, (notify_date, channel, strategy, status, message_id, error_msg))
+
+
+def is_notification_sent(notify_date: str, strategy: str,
+                         channel: str = 'telegram',
+                         db_path: Optional[Path] = None) -> bool:
+    """检查今日某策略是否已成功推送（幂等检查）"""
+    with get_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT status FROM notification_log WHERE notify_date = ? AND channel = ? AND strategy = ?",
+            (notify_date, channel, strategy)
+        ).fetchone()
+        return row is not None and row['status'] == 'sent'
+
+
+def get_notification_log(notify_date: str, channel: str = 'telegram',
+                         db_path: Optional[Path] = None) -> List[Dict]:
+    """获取某日所有推送记录"""
+    with get_db(db_path) as conn:
+        rows = conn.execute(
+            "SELECT * FROM notification_log WHERE notify_date = ? AND channel = ? ORDER BY id",
+            (notify_date, channel)
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 # ============================================================

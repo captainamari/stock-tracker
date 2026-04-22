@@ -25,6 +25,12 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
+try:
+    from lib.encoding_fix import ensure_utf8_output
+    ensure_utf8_output()
+except ImportError:
+    pass  # encoding fix already applied via lib.db import
+
 logger = logging.getLogger(__name__)
 
 # 合法的美股 ticker 格式: 1-5 个大写字母，可带 .A/.B 后缀
