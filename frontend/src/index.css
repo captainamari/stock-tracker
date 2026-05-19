@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #334155 #111827;
+  }
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  *::-webkit-scrollbar-track {
+    background: #111827;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+  }
+}
+
+@layer components {
+  .widget-card {
+    @apply bg-surface-1 border border-border rounded-lg overflow-hidden;
+  }
+  .widget-header {
+    @apply flex items-center justify-between px-3 py-2 border-b border-border bg-surface-2/50;
+  }
+  .widget-title {
+    @apply text-xs font-semibold uppercase tracking-wider text-text-secondary;
+  }
+  .widget-body {
+    @apply p-3;
+  }
+  .badge {
+    @apply inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-medium;
+  }
+  .badge-green { @apply bg-accent-green/20 text-accent-green; }
+  .badge-red { @apply bg-accent-red/20 text-accent-red; }
+  .badge-yellow { @apply bg-accent-yellow/20 text-accent-yellow; }
+  .badge-blue { @apply bg-accent-blue/20 text-accent-blue; }
+  .badge-orange { @apply bg-accent-orange/20 text-accent-orange; }
+  .badge-neutral { @apply bg-surface-3 text-text-secondary; }
+  
+  .score-bar {
+    @apply h-1.5 rounded-full bg-surface-3 overflow-hidden;
+  }
+  .score-bar-fill {
+    @apply h-full rounded-full transition-all duration-500;
+  }
+}

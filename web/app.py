@@ -19,7 +19,7 @@ if str(ROOT_DIR) not in sys.path:
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
 from starlette.middleware.gzip import GZipMiddleware
 
 from web.routes import dashboard, watchlist, ticker, api
@@ -64,6 +64,23 @@ app.include_router(watchlist.router)
 app.include_router(ticker.router)
 app.include_router(api.router, prefix="/api")
 app.include_router(api_v1_router, prefix="/api")
+
+# ============================================================
+# New SPA Frontend — served at /app
+# ============================================================
+SPA_DIR = STATIC_DIR / "app"
+if SPA_DIR.exists():
+    app.mount("/app/assets", StaticFiles(directory=str(SPA_DIR / "assets")), name="spa-assets")
+
+    @app.get("/app/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Serve the React SPA for all /app/* routes (client-side routing)."""
+        return FileResponse(str(SPA_DIR / "index.html"))
+
+    @app.get("/app")
+    async def serve_spa_root():
+        """Serve SPA at /app."""
+        return FileResponse(str(SPA_DIR / "index.html"))
 
 # ============================================================
 # CLI 入口
