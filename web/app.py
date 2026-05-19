@@ -23,6 +23,7 @@ from fastapi.responses import RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 
 from web.routes import dashboard, watchlist, ticker, api
+from web.routes.v1 import router as api_v1_router
 from web.i18n import get_language_from_request, SUPPORTED_LANGUAGES
 
 # ============================================================
@@ -62,6 +63,7 @@ app.include_router(dashboard.router)
 app.include_router(watchlist.router)
 app.include_router(ticker.router)
 app.include_router(api.router, prefix="/api")
+app.include_router(api_v1_router, prefix="/api")
 
 # ============================================================
 # CLI 入口
