@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* react-grid-layout overrides */
+.react-grid-item.react-grid-placeholder {
+  background: rgba(59, 130, 246, 0.15) !important;
+  border: 1px dashed rgba(59, 130, 246, 0.4) !important;
+  border-radius: 0.5rem;
+}
+.react-grid-item > .react-resizable-handle::after {
+  border-color: #334155 !important;
+}
+
 @layer base {
   * {
     scrollbar-width: thin;
@@ -25,7 +35,7 @@
     @apply bg-surface-1 border border-border rounded-lg overflow-hidden;
   }
   .widget-header {
-    @apply flex items-center justify-between px-3 py-2 border-b border-border bg-surface-2/50;
+    @apply flex items-center justify-between px-3 py-2 border-b border-border bg-surface-2/50 cursor-move select-none;
   }
   .widget-title {
     @apply text-xs font-semibold uppercase tracking-wider text-text-secondary;

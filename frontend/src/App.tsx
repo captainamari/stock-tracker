@@ -4,7 +4,8 @@
 
 import { useEffect } from 'react'
 import { Header } from './components/layout/Header'
-import { Dashboard } from './components/layout/Dashboard'
+import { GridDashboard } from './components/layout/GridDashboard'
+import { WidgetPanel } from './components/layout/WidgetPanel'
 import { useAppStore } from './stores/appStore'
 import { wsClient } from './api/websocket'
 
@@ -40,7 +41,8 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <Header />
-      <Dashboard />
+      <GridDashboard />
+      <WidgetPanel />
     </div>
   )
 }
