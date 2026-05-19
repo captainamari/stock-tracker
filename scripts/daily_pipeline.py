@@ -79,6 +79,7 @@ logger.addHandler(_fh)
 STRATEGY_ORDER = [
     'prices',
     'market_pulse',
+    'momentum_v3',
     'stage2',
     'vcp',
     'bottom_fisher',
@@ -88,6 +89,7 @@ STRATEGY_ORDER = [
 STRATEGY_SCRIPTS = {
     'prices':           'scripts/save_prices_yfinance.py',
     'market_pulse':     'scripts/market_pulse.py',
+    'momentum_v3':      None,  # Runs via Python import, not subprocess
     'stage2':           'scripts/stage2_monitor.py',
     'vcp':              'scripts/vcp_scanner.py',
     'bottom_fisher':    'scripts/bottom_fisher.py',
@@ -199,6 +201,29 @@ def run_phase2_strategies(date_str: str, force: bool = False) -> dict:
 
         record_pipeline_run(date_str, strategy, 'running')
         start_time = time.time()
+
+        # Momentum V3 runs via Python import (not subprocess)
+        if strategy == 'momentum_v3':
+            try:
+                from lib.strategy.momentum_v3.runner import run_momentum_pipeline
+                summary = run_momentum_pipeline()
+                duration = time.time() - start_time
+                errors = summary.get('errors', [])
+                if not errors:
+                    logger.info(f"[{strategy}] Completed in {duration:.1f}s")
+                    record_pipeline_run(date_str, strategy, 'ok', duration=duration)
+                    results[strategy] = 'ok'
+                else:
+                    error_msg = '; '.join(errors[:3])
+                    logger.warning(f"[{strategy}] Completed with errors: {error_msg}")
+                    record_pipeline_run(date_str, strategy, 'ok', error_msg=error_msg, duration=duration)
+                    results[strategy] = 'ok'
+            except Exception as e:
+                duration = time.time() - start_time
+                logger.error(f"[{strategy}] Exception: {e}")
+                record_pipeline_run(date_str, strategy, 'failed', error_msg=str(e), duration=duration)
+                results[strategy] = 'failed'
+            continue
 
         try:
             script_path = PROJECT_ROOT / STRATEGY_SCRIPTS[strategy]

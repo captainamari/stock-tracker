@@ -971,6 +971,184 @@ def get_notification_log(notify_date: str, channel: str = 'telegram',
 
 
 # ============================================================
+# Momentum Scores — V3 策略数据存取
+# ============================================================
+
+def save_momentum_score(symbol: str, date_str: str, layer: str, final_score: float,
+                        raw_score: float = None, regime: str = None,
+                        delta_1d: float = None, delta_5d: float = None,
+                        consecutive_above_65: int = 0, consecutive_above_70: int = 0,
+                        consecutive_below_60: int = 0,
+                        signals: list = None, position_advice: int = None,
+                        urgency: str = "NONE", relative_strength: dict = None,
+                        price: float = None, daily_change_pct: float = None,
+                        db_path: Optional[Path] = None):
+    """保存动量计算结果到 momentum_scores 表"""
+    with get_db(db_path) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO momentum_scores
+            (symbol, date, layer, raw_score, final_score, regime, delta_1d, delta_5d,
+             consecutive_above_65, consecutive_above_70, consecutive_below_60,
+             signals, position_advice, urgency, relative_strength, price, daily_change_pct)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (symbol, date_str, layer, raw_score, final_score, regime,
+              delta_1d, delta_5d, consecutive_above_65, consecutive_above_70,
+              consecutive_below_60, _json_dumps(signals or []),
+              position_advice, urgency, _json_dumps(relative_strength or {}),
+              price, daily_change_pct))
+
+
+def save_momentum_scores_batch(results: List[Dict], db_path: Optional[Path] = None):
+    """批量保存动量计算结果"""
+    with get_db(db_path) as conn:
+        for r in results:
+            conn.execute("""
+                INSERT OR REPLACE INTO momentum_scores
+                (symbol, date, layer, raw_score, final_score, regime, delta_1d, delta_5d,
+                 consecutive_above_65, consecutive_above_70, consecutive_below_60,
+                 signals, position_advice, urgency, relative_strength, price, daily_change_pct)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (r['symbol'], r['date'], r.get('layer', 'stock'),
+                  r.get('raw_score'), r.get('final_score'), r.get('regime'),
+                  r.get('delta_1d'), r.get('delta_5d'),
+                  r.get('consecutive_above_65', 0), r.get('consecutive_above_70', 0),
+                  r.get('consecutive_below_60', 0),
+                  _json_dumps(r.get('signals', [])),
+                  r.get('position_advice'), r.get('urgency', 'NONE'),
+                  _json_dumps(r.get('relative_strength', {})),
+                  r.get('price'), r.get('daily_change_pct')))
+
+
+def get_momentum_scores(layer: str = None, date_str: str = None, symbol: str = None,
+                        urgency_min: str = None, limit: int = 100,
+                        db_path: Optional[Path] = None) -> List[Dict]:
+    """查询动量评分"""
+    with get_db(db_path) as conn:
+        conditions = []
+        params = []
+        if layer:
+            conditions.append("layer = ?")
+            params.append(layer)
+        if date_str:
+            conditions.append("date = ?")
+            params.append(date_str)
+        if symbol:
+            conditions.append("symbol = ?")
+            params.append(symbol)
+        if urgency_min:
+            urgency_levels = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'NONE']
+            idx = urgency_levels.index(urgency_min) if urgency_min in urgency_levels else 4
+            valid = urgency_levels[:idx + 1]
+            placeholders = ','.join(['?'] * len(valid))
+            conditions.append(f"urgency IN ({placeholders})")
+            params.extend(valid)
+
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(limit)
+
+        rows = conn.execute(
+            f"SELECT * FROM momentum_scores {where} ORDER BY date DESC, final_score DESC LIMIT ?",
+            params
+        ).fetchall()
+
+        results = []
+        for r in rows:
+            d = dict(r)
+            d['signals'] = json.loads(d.get('signals') or '[]')
+            d['relative_strength'] = json.loads(d.get('relative_strength') or '{}')
+            results.append(d)
+        return results
+
+
+def get_latest_momentum_scores(layer: str = None,
+                               db_path: Optional[Path] = None) -> List[Dict]:
+    """获取最新日期的所有动量评分"""
+    with get_db(db_path) as conn:
+        # Find latest date
+        layer_cond = "WHERE layer = ?" if layer else ""
+        params = [layer] if layer else []
+        row = conn.execute(
+            f"SELECT MAX(date) as max_date FROM momentum_scores {layer_cond}",
+            params
+        ).fetchone()
+        if not row or not row['max_date']:
+            return []
+        return get_momentum_scores(layer=layer, date_str=row['max_date'], limit=200, db_path=db_path)
+
+
+def save_score_history(symbol: str, date_str: str, strategy: str,
+                       score: float, regime: str = None,
+                       db_path: Optional[Path] = None):
+    """保存评分历史（用于图表展示）"""
+    with get_db(db_path) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO score_history (symbol, date, strategy, score, regime)
+            VALUES (?, ?, ?, ?, ?)
+        """, (symbol, date_str, strategy, score, regime))
+
+
+def save_score_history_batch(records: List[Dict], db_path: Optional[Path] = None):
+    """批量保存评分历史"""
+    with get_db(db_path) as conn:
+        for r in records:
+            conn.execute("""
+                INSERT OR REPLACE INTO score_history (symbol, date, strategy, score, regime)
+                VALUES (?, ?, ?, ?, ?)
+            """, (r['symbol'], r['date'], r['strategy'], r.get('score'), r.get('regime')))
+
+
+def get_score_history(symbol: str, strategy: str = None, days: int = 60,
+                      db_path: Optional[Path] = None) -> List[Dict]:
+    """获取评分历史（用于图表）"""
+    with get_db(db_path) as conn:
+        conditions = ["symbol = ?"]
+        params = [symbol]
+        if strategy:
+            conditions.append("strategy = ?")
+            params.append(strategy)
+        where = " AND ".join(conditions)
+        params.append(days)
+        rows = conn.execute(
+            f"SELECT * FROM score_history WHERE {where} ORDER BY date DESC LIMIT ?",
+            params
+        ).fetchall()
+        return [dict(r) for r in reversed(rows)]
+
+
+def get_sector_mappings(db_path: Optional[Path] = None) -> List[Dict]:
+    """获取所有股票-板块映射"""
+    with get_db(db_path) as conn:
+        rows = conn.execute("SELECT * FROM sector_mappings").fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_sector_definitions(enabled_only: bool = True,
+                           db_path: Optional[Path] = None) -> List[Dict]:
+    """获取所有板块定义"""
+    with get_db(db_path) as conn:
+        cond = "WHERE enabled = 1" if enabled_only else ""
+        rows = conn.execute(f"SELECT * FROM sector_definitions {cond}").fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            d['basket_tickers'] = json.loads(d.get('basket_tickers') or '[]')
+            results.append(d)
+        return results
+
+
+def upsert_sector_mapping(stock_symbol: str, sector_key: str, sector_name: str,
+                          sector_etf: str = None, decision_priority: str = "stock_first",
+                          db_path: Optional[Path] = None):
+    """新增/更新股票-板块映射"""
+    with get_db(db_path) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO sector_mappings
+            (stock_symbol, sector_key, sector_name, sector_etf, decision_priority, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+        """, (stock_symbol, sector_key, sector_name, sector_etf, decision_priority))
+
+
+# ============================================================
 # CLI 入口
 # ============================================================
 if __name__ == "__main__":
@@ -984,7 +1162,11 @@ if __name__ == "__main__":
         print("\n📊 数据库统计:")
         for k, v in stats.items():
             print(f"  {k}: {v}")
+    elif len(sys.argv) > 1 and sys.argv[1] == "migrate":
+        from lib.migrations.add_momentum_tables import run_migration
+        run_migration()
     else:
         print("用法:")
-        print("  python -m lib.db init   — 初始化数据库")
-        print("  python -m lib.db stats  — 查看统计信息")
+        print("  python -m lib.db init     — 初始化数据库")
+        print("  python -m lib.db stats    — 查看统计信息")
+        print("  python -m lib.db migrate  — 运行数据库迁移")

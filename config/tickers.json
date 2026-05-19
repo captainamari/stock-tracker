@@ -245,6 +245,34 @@
       "name": "Russell 2000 ETF",
       "sector": "Market Index",
       "enabled": true
+    },
+    {
+      "symbol": "SMH",
+      "yf_ticker": "SMH",
+      "name": "VanEck Semiconductor ETF",
+      "sector": "Sector ETF",
+      "enabled": true
+    },
+    {
+      "symbol": "ITA",
+      "yf_ticker": "ITA",
+      "name": "iShares US Aerospace & Defense ETF",
+      "sector": "Sector ETF",
+      "enabled": true
+    },
+    {
+      "symbol": "IGV",
+      "yf_ticker": "IGV",
+      "name": "iShares Expanded Tech-Software ETF",
+      "sector": "Sector ETF",
+      "enabled": true
+    },
+    {
+      "symbol": "XBI",
+      "yf_ticker": "XBI",
+      "name": "SPDR S&P Biotech ETF",
+      "sector": "Sector ETF",
+      "enabled": true
     }
   ],
   "benchmark": "SPY",
