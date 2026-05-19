@@ -21,14 +21,23 @@ from lib.strategy import registry
 logger = logging.getLogger(__name__)
 
 
+_loaded = False
+
+
 def load_all_strategies():
     """
     Register all strategy plugins with the global registry.
+    Idempotent — safe to call multiple times.
 
     This includes:
     - Legacy strategy adapters (market_pulse, stage2, vcp, bottom_fisher, buying_checklist)
     - Momentum V3 family (market_sentiment, sector_momentum, momentum_v3)
     """
+    global _loaded
+    if _loaded:
+        return registry
+    _loaded = True
+
     # Legacy adapters
     from lib.strategy.adapters import (
         MarketPulseAdapter,

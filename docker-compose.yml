@@ -1,11 +1,15 @@
 # ============================================================
-# Stock Tracker — Docker Compose
+# Stock Tracker — Docker Compose (V2)
 # ============================================================
 # 用法:
 #   docker compose up -d          # 启动
 #   docker compose down            # 停止
 #   docker compose logs -f         # 查看日志
 #   docker compose up -d --build   # 重新构建并启动
+#
+# 迁移（首次更新到 V2 后执行一次）:
+#   docker compose exec web python -m lib.db migrate
+#   docker compose exec web python -m lib.strategy.momentum_v3.runner
 # ============================================================
 
 services:
@@ -24,11 +28,12 @@ services:
     environment:
       - HOST=0.0.0.0
       - PORT=8000
-      # Telegram notification (Phase 7)
+      - PYTHONUTF8=1
+      # Telegram notification
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/ws/status')"]
       interval: 30s
       timeout: 10s
       retries: 3
