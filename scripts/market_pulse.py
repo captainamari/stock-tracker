@@ -40,8 +40,25 @@ LOG_FILE = LOGS_DIR / "market_pulse.log"
 
 
 def log(message, level="INFO"):
+    """统一日志输出：时间、等级、调用位置、内容。
+
+    保持现有调用方式不变：log(message, level="INFO")。
+    location 指向调用 log() 的位置，而不是本函数内部的位置。
+    """
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    log_entry = f"[{timestamp}] [{level}] {message}"
+
+    try:
+        caller_frame = sys._getframe(1)
+        caller_path = Path(caller_frame.f_code.co_filename).resolve()
+        try:
+            caller_file = caller_path.relative_to(PROJECT_ROOT)
+        except ValueError:
+            caller_file = caller_path.name
+        location = f"{caller_file}:{caller_frame.f_lineno}"
+    except Exception:
+        location = "unknown:0"
+
+    log_entry = f"[{timestamp}][{level}][{location}]:{message}"
     print(log_entry)
     try:
         LOGS_DIR.mkdir(parents=True, exist_ok=True)

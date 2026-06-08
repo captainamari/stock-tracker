@@ -332,6 +332,14 @@ async def api_refresh_prices():
     """
     from lib.pipeline import refresh_all_prices
 
+    def _next_from_gen(gen):
+        """Wrapper to convert StopIteration to a sentinel value.
+        StopIteration cannot propagate through run_in_executor on Python 3.7+."""
+        try:
+            return next(gen)
+        except StopIteration:
+            return None  # sentinel: generator exhausted
+
     async def generate():
         try:
             loop = asyncio.get_event_loop()
@@ -339,9 +347,9 @@ async def api_refresh_prices():
             gen = refresh_all_prices()
 
             while True:
-                try:
-                    progress = await loop.run_in_executor(None, next, gen)
-                except StopIteration:
+                progress = await loop.run_in_executor(None, _next_from_gen, gen)
+
+                if progress is None:
                     break
 
                 event_type = progress.get('type', 'progress')
