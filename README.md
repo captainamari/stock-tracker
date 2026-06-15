@@ -1,1219 +1,166 @@
-# 📊 Stock Tracker — 美股技术分析与信号监控系统
+# Stock Tracker
 
-基于 Stan Weinstein 阶段分析、Mark Minervini 趋势模板/VCP 理论、以及多维度量化抄底模型，构建的自动化美股分析管线。
+Stock Tracker is a backend-first US stock analysis pipeline. It collects daily market data, stores prices and strategy state in SQLite, runs several technical-analysis strategies, renders daily reports, and can send Telegram notifications. The `web/` directory is frontend-facing code and is intentionally not covered here.
 
-## 总览
+## Backend Architecture
 
-```
-save_prices.py            → 数据采集层 ⚠️ 已弃用（Stooq 数据源不可用）
-save_prices_yfinance.py   → 数据采集层 yfinance（增量模式 + 自动联动策略/Market Pulse）
-        ↓
-    SQLite DB (stock_tracker.db)
-        ↓
-market_pulse.py           → 策略0: 市场温度计（宏观全局视角 + Distribution Day 检测，最先推送）
-        ↓
-stage2_monitor.py         → 策略1: Stage 2 趋势确认（基础层）
-        ↓
-vcp_scanner.py            → 策略2: VCP 右侧追涨（依赖 Stage 2）
-bottom_fisher.py          → 策略3: 抄底左侧信号（独立运行）
-buying_checklist.py       → 策略4: 买入检查清单（多维度综合，含周线 Elder Impulse）
-        ↓
-    Jinja2 模板 → reports/daily/ (MD + Telegram HTML)
-        ↓
-    daily_pipeline.py         → Phase 7: 三阶段 Pipeline 调度 + Telegram 推送
-        ↓                      Phase 1: 数据采集 → Phase 2: 策略计算 → Phase 3: 推送
-    lib/notifier.py           → Telegram Bot 推送引擎（自动分段 + 重试 + 幂等）
-        ↓
-    web/app.py               → Phase 4: Web Dashboard (FastAPI + Chart.js)
-        ↓
-    lib/pipeline.py           → Phase 5: Web Ticker 管理（验证 + 拉取 + 策略管道 + 自动 Market Pulse）
-```
-
-### 策略定位对比
-
-| 维度 | Market Pulse | Stage 2 Monitor | VCP Scanner | Bottom Fisher | Buying Checklist |
-|------|-------------|----------------|-------------|---------------|-----------------|
-| **理论基础** | 多维市场温度计 + IBD Distribution Day | Stan Weinstein 四阶段 | Mark Minervini VCP | 技术抄底（均值回归） | Elder Impulse + 多维检查 |
-| **交易方向** | 宏观判定 | 趋势确认 | 右侧追涨 | 左侧抄底 | 综合买入决策 |
-| **扫描范围** | SPY/QQQ/IWM/VIX + 全池 | 全部监控股票 | 仅 Stage 2 股票 | 全部监控股票 | 全部监控股票 |
-| **核心问题** | "现在是进攻还是防御？" | "这只股票在上升趋势中吗？" | "Stage 2 中的哪只即将突破？" | "哪只好股票跌到底了？" | "现在适合买入吗？" |
-| **信号含义** | 🟢进攻/🟡谨慎/🟠防御/🔴空仓 | 趋势健康 → 可持有 | 波动收缩 → 即将突破 | 超跌到位 → 买入窗口 | 多维确认 → 买入信号 |
-
----
-
-## 项目演进路线
-
-| Phase | 内容 | 状态 |
-|-------|------|------|
-| Phase 1 | 创建独立项目 + 数据库 Schema + `lib/db.py` + 数据迁移脚本（CSV→DB） | ✅ 已完成 |
-| Phase 2 | 改造各策略脚本，计算结果存入 DB + 保留现有文件输出（双写过渡） | ✅ 已完成 |
-| Phase 3 | 抽取 Jinja2 报告模板，报告从 DB 数据渲染 | ✅ 已完成 |
-| Phase 4 | 开发 Web 应用（Dashboard + Watchlist + Ticker Detail） | ✅ 已完成 |
-| Phase 5 | Web Ticker 管理（验证 + 新增 + 删除 + 单 Ticker Pipeline） | ✅ 已完成 |
-| Phase 6 | 国际化 (i18n) + 技术分析模块 + 页面布局优化 | ✅ 已完成 |
-| Phase 7 | Daily Pipeline 三阶段调度 + Telegram 推送 + 幂等/可重入 | ✅ 已完成 |
-
----
-
-## 架构设计
-
-### 系统架构
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                     config/tickers.json                       │
-│                  个股 + 指数/ETF + SPY 基准                   │
-└───────────────────────────┬──────────────────────────────────┘
-                            │
-         ┌──────────────────┼──────────────────┐
-         ▼                  ▼                  ▼
-  save_prices.py     save_prices_yfinance.py   lib/config.py
-  (Stooq → 个股)     (yfinance → VIX/QQQ/IWM)  (sync_watchlist)
-         │                  │                  │
-         └────────┬─────────┘                  │
-                  ▼                            ▼
-         ┌────────────────────────────────────────┐
-         │         SQLite: stock_tracker.db        │
-         │  ┌───────────┐  ┌────────────────────┐ │
-         │  │ watchlist  │  │   stock_prices     │ │
-         │  └───────────┘  └────────────────────┘ │
-         │  ┌───────────────────┐ ┌────────────┐  │
-         │  │ strategy_results  │ │ market_pulse│  │
-         │  └───────────────────┘ └────────────┘  │
-         │  ┌───────────────────┐ ┌────────────┐  │
-         │  │ strategy_states   │ │ db_meta     │  │
-         │  └───────────────────┘ └────────────┘  │
-         │  ┌───────────────────┐                  │
-         │  │ signal_changes    │                  │
-         │  └───────────────────┘                  │
-         │  ┌───────────────────┐ ┌──────────────┐ │
-         │  │ pipeline_runs     │ │notification_ ││
-         │  │                   │ │ log          ││
-         │  └───────────────────┘ └──────────────┘ │
-         └──────────────────┬─────────────────────┘
-                            │ lib/db.py (DAL)
-           ┌────────────────┼────────────────────┐
-           ▼                ▼                    ▼
-     策略分析脚本      lib/indicators.py     lib/models.py
-     (scripts/*.py)    (共享技术指标)        (数据模型)
-           │                                      │
-           ▼                                      ▼
-     lib/report.py + templates/*.j2         lib/pipeline.py
-           │                               (Web 单 Ticker 管道)
-           ▼
-     reports/daily/ (MD + Telegram HTML + manifest)
-           │
-           ▼
-     daily_pipeline.py (三阶段调度)
-           │
-           ▼
-     lib/notifier.py → Telegram Bot API
+```text
+config/tickers.json
+        |
+        v
+scripts/save_prices_yfinance.py
+        |
+        v
+data/stock_tracker.db  <---- lib/db.py, lib/config.py, lib/models.py
+        |
+        +--> scripts/market_pulse.py
+        +--> scripts/stage2_monitor.py
+        +--> scripts/vcp_scanner.py
+        +--> scripts/bottom_fisher.py
+        +--> scripts/buying_checklist.py
+        |
+        v
+lib/report.py + templates/*.j2
+        |
+        v
+reports/daily/*.md + *_telegram.html + *_manifest.txt
+        |
+        v
+scripts/daily_pipeline.py --> lib/notifier.py --> Telegram Bot API
 ```
 
-### 数据库 Schema (9 张表)
-
-| 表名 | 用途 | 主键 |
-|------|------|------|
-| `watchlist` | 观察列表（同步自 tickers.json） | symbol |
-| `stock_prices` | 日线 OHLCV 价格数据 | (symbol, date) |
-| `strategy_results` | 策略每日计算结果（所有策略共享） | (symbol, date, strategy) |
-| `strategy_states` | 策略当前状态跟踪（替代 state/*.json） | (symbol, strategy) |
-| `signal_changes` | 信号进出历史记录 | id (自增) |
-| `market_pulse` | 市场宏观状态（含 Distribution Day 数据） | date |
-| `pipeline_runs` | Pipeline 各步骤执行状态（幂等控制） | (run_date, strategy) |
-| `notification_log` | Telegram 推送记录（幂等控制） | (notify_date, channel, strategy) |
-| `db_meta` | 数据库版本元数据 | key |
-
-**设计要点**：
-- `strategy_results` 使用 JSON 列（`conditions`, `condition_details`, `metrics`）存储策略特定数据，灵活扩展
-- `market_pulse` 表包含 `distribution_days` JSON 列，存储 SPY/QQQ 的 Distribution Day 详细数据
-- `pipeline_runs` 和 `notification_log` 实现 Pipeline 执行和推送的幂等控制，支持安全重跑
-- SQLite WAL 模式，提升并发读性能
-- `_NumpyEncoder` 自动处理 numpy 类型的 JSON 序列化
-
-### 数据流
-
-```
-tickers.json
-     │
-     ├── monitored[] + benchmark ──→ save_prices.py (Stooq)
-     │                                     │
-     ├── yfinance_only[] ────────→ save_prices_yfinance.py (增量模式)
-     │                                     │
-     │    ┌────────────────────────────────┘
-     │    │              写入 stock_prices 表
-     │    │              (增量更新，仅拉新数据)
-     │    │
-     │    │  ┌─── 价格更新后自动联动 ───────────────────────────┐
-     │    │  │                                                    │
-     ▼    ▼  ▼                                                    │
-market_pulse.py  ──→  market_pulse 表     (SPY+QQQ+IWM+VIX+宽度+Distribution Days) │
-     │                                                            │
-stage2_monitor.py  ──→  strategy_results/states                   │
-     │                        │                                   │
-     │                        ▼                                   │
-     │                  vcp_scanner.py  ──→  strategy_results/states
-     │                                                            │
-     ├──────────────→  bottom_fisher.py  ──→  strategy_results/states
-     │                                                            │
-     ├──────────────→  buying_checklist.py  ──→  strategy_results/states
-     │                                                            │
-     └──────────────→  [Phase 4] Web Dashboard ←──────────────────┘
-                       (策略结果日期不一致时自动 fallback)
-```
-
----
-
-## 数据采集层
-
-### `save_prices.py` — Stooq 数据源
-
-主力数据采集脚本，从 stooq.com 拉取 OHLCV 日线数据，覆盖 `tickers.json` 中的 个股 + SPY 基准。
-
-### `save_prices_yfinance.py` — yfinance 数据源（v2.1 增量模式）
-
-补充数据采集脚本，从 Yahoo Finance 拉取 Stooq 不覆盖的 ticker，读取 `tickers.json` 的 `yfinance_only` 配置区。
-
-**v2.1 增量模式改进**：
-- **增量检查**：先查 DB 中每只 ticker 的最新价格日期，已有当天数据则跳过，否则只拉取增量数据（不再每次全量拉 365 天）
-- **自动运行策略**：价格更新完成后，自动对更新成功的 ticker 运行全部策略计算（Stage 2 / VCP / Bottom Fisher / Buying Checklist）
-- **自动更新 Market Pulse**：策略计算完成后，自动运行 Market Pulse 分析并更新 `market_pulse` 表，确保日期与策略结果一致
-
-| 对比项 | Stooq 版 | yfinance 版 |
-|--------|---------|-------------|
-| **覆盖** | 个股 + SPY | VIX / SPY / QQQ / IWM |
-| **配置区** | `monitored[]` + `benchmark` | `yfinance_only[]` |
-| **请求间隔** | 1 秒 | 2~3.5 秒（更保守） |
-| **风险** | 无限流问题 | 有限流风险 |
-| **存储** | SQLite DB + CSV 备份 | SQLite DB + CSV 备份 |
-| **拉取模式** | 全量 365 天 | 增量（仅拉新数据） |
-| **策略联动** | 无 | 自动运行策略 + Market Pulse |
-
-> ⚠️ 从 yfinance 切换到 Stooq 的原因：yfinance 限流严重，有被封 IP 的风险。Stooq 作为主力源，yfinance 仅用于拉取少量补充 ticker。
-
----
-
-## 策略0: Market Pulse (`market_pulse.py` v4.0)
-
-### 概述
-市场宏观温度计。综合 SPY/QQQ/IWM 趋势 + VIX 恐慌指数 + 内部市场宽度 + 板块热度 + **Distribution Day 分析**，输出市场整体状态判定。**在所有个股策略之前推送**，先看市场全貌再看个股信号。
-
-### 设计原则
-- 纯读 DB 数据，零网络请求
-- 数据不可用时优雅降级（如缺少 VIX 数据，权重自动重分配）
-
-### 6 大分析模块
-
-#### ① SPY 趋势分析 (权重 30%)
-
-| 指标 | 分值 | 说明 |
-|------|------|------|
-| 价格 > SMA50 | +10 | 短期趋势向上 |
-| 价格 > SMA200 | +10 | 长期趋势向上 |
-| SMA50 > SMA200 (金叉) | +10 | 均线排列健康 |
-| SMA200 上升 | +5 | 长期趋势加速 |
-| 价格 > EMA65 | +5 | 模拟周线趋势 |
-| 周线排列 (EMA65 > EMA170) | +5 | 周线级别健康 |
-| MACD > 0 | +8 | 动量正面 |
-| MACD柱状图上升 | +7 | 动量加速 |
-| 短期排列 (EMA8 > EMA21) | +5 | 短期走势正面 |
-| 5日动量 > 0 | +3~10 | 近期走势正面 |
-| RSI 健康区 (40-70) | +10 | 不超买不超卖 |
-| 距52周高点 < 5% | +10 | 靠近新高 |
-| EMA170 上升 | +5 | 长期趋势确认 |
-
-#### ② QQQ 趋势分析 (权重 15%)
-与 SPY 评分逻辑完全一致。代表纳斯达克科技股方向。
-
-#### ③ IWM 趋势分析 (权重 10%)
-与 SPY 评分逻辑完全一致。代表小盘股情绪（风险偏好指标）。
-
-#### ④ VIX 恐慌分析 (权重 25%)
-
-| VIX 区间 | 状态 | 评分 |
-|----------|------|------|
-| < 12 | 极度乐观 😎 | 100 |
-| 12-15 | 乐观 | 85 |
-| 15-18 | 正常 | 70 |
-| 18-22 | 偏高 😟 | 55 |
-| 22-25 | 恐慌 😨 | 40 |
-| 25-30 | 高度恐慌 | 25 |
-| 30-35 | 极度恐慌 🤯 | 10 |
-| ≥ 35 | 崩溃 | 0 |
-
-#### ⑤ 内部宽度分析 (权重 20%)
-
-基于监控股票池计算内部市场宽度（非全市场）：
-
-| 指标 | 最大分值 | 说明 |
-|------|---------|------|
-| 价格 > MA50 占比 | 35 | 短期参与度 |
-| 价格 > MA200 占比 | 25 | 长期健康度 |
-| Stage 2 占比 | 25 | 趋势确认浓度 |
-| 5日上涨占比 | 15 | 即时动能 |
-
-附加信息：板块热度排名（按 Stage 2 占比排序）。
-
-### ⑥ Distribution Day 分析（IBD 方法论）
-
-基于 Investor's Business Daily (IBD) 的经典市场健康指标，检测指数级别的机构出货行为。当调整期间出现 5 次以上 distribution days，大跌概率极高。
-
-#### Distribution Day 定义
-
-| 类型 | 触发条件 | 说明 |
-|------|---------|------|
-| **Distribution Day** | 指数单日跌幅 ≥ 0.2% 且当日成交量 > 前一交易日 | 机构在放量抛售 |
-| **Stalling Day** | 指数微涨（< 0.4%）但收在当日波动区间上部 75%，且放量 | 机构借上涨出货（churning） |
-
-#### 滚动窗口与过期规则
-
-| 规则 | 参数 | 说明 |
-|------|------|------|
-| 滚动窗口 | 25 个交易日 | 只计最近 25 日内的 distribution days |
-| 时间过期 | > 25 交易日 | 超过 25 个交易日自动过期 |
-| 反弹失效 | 指数从该日收盘价上涨 ≥ 5% | 市场已收复跌幅，该 day 失效 |
-
-#### 5 级预警
-
-| 累计压力* | 级别 | Emoji | 说明 |
-|-----------|------|-------|------|
-| < 2 | Low | ✅ | 正常，无明显出货 |
-| 2-3 | Moderate | 🟡 | 轻度出货，关注后续 |
-| 4 | Elevated | 🟠 | 出货增加，提高警惕 |
-| 5 | High | 🔴 | 密集出货，减仓信号 |
-| ≥ 6 | Extreme | 🚨 | 极端出货，大跌风险极高 |
-
-*累计压力 = Distribution Days + Stalling Days × 0.5
-
-#### 分析范围
-- **SPY**（S&P 500）和 **QQQ**（Nasdaq 100）双指数独立追踪
-- 数据来源：DB 中已有的指数日线 OHLCV 数据
-
-### 综合评分与市场状态
-
-| 评分区间 | 状态 | Emoji | 操作建议 |
-|----------|------|-------|---------|
-| ≥ 70 | BULLISH — 进攻 | 🟢 | 积极寻找 Stage 2 + VCP 入场机会 |
-| 50-69 | NEUTRAL — 谨慎 | 🟡 | 方向不明，控制仓位，等待信号明确 |
-| 35-49 | CAUTIOUS — 防御 | 🟠 | 弱势市场，减少新仓，保护利润 |
-| < 35 | BEARISH — 空仓 | 🔴 | 下行趋势，现金为王，等待底部信号 |
-
-**特殊修正规则**：
-- VIX ≥ 30 → 强制降级为 🔴 BEARISH（恐慌飙升时暂停所有买入）
-- SPY 跌破 SMA200 超过 3% → 最多降级为 🟠 CAUTIOUS（市场结构转弱）
-- VIX < 13 且 BULLISH → 附加⚠️过度自满警告
-- **Distribution Days ≥ 6** → 强制降级为 🔴 BEARISH（密集机构出货，现金为王）
-- **Distribution Days ≥ 5** → 最多降级为 🟠 CAUTIOUS（出货密集，减少曝露）
-- **Distribution Days ≥ 4 且 BULLISH** → 附加⚠️ Distribution Days 上升警告
-
-### Regime Change 检测
-自动检测市场状态变化。当 regime 发生切换（如 🟢→🟡），Telegram 推送会在头部高亮显示变化信息。
-
----
-
-## 策略1: Stage 2 Monitor (`stage2_monitor.py` v4.0)
-
-### 概述
-基于 Stan Weinstein 和 Mark Minervini 的趋势模板理论，判断股票是否处于上升的"第二阶段"。这是其他策略的基础层。
-
-### 8 个条件
-
-| 条件 | 名称 | 判断标准 |
-|------|------|----------|
-| C1 | 价格位置 | 价格 > SMA150 且 > SMA200 |
-| C2 | 均线排列 | SMA150 > SMA200 |
-| C3 | 长期趋势 | SMA200 上升中（vs 20天前） |
-| C4 | 短期均线 | SMA50 > SMA150 且 > SMA200 |
-| C5 | 中期强度 | 价格 > SMA50 |
-| C6 | 低点距离 | 价格 > 52周最低 × 1.25 |
-| C7 | 高点距离 | 价格 > 52周最高 × 0.75 |
-| C8 | 相对强度 | 6个月回报率 > SPY |
-
-**判定规则**：8/8 条件全部满足 = Stage 2 确认
-
-### 附加指标
-- **Trend Power Score (0-100)**：综合评分，由均线排列紧密度(0-25)、价格位置(0-25)、52周位置(0-25)、相对强度(0-25) 四维度加权
-- **成交量信号**：🔥放量 / 📈缩量上涨 / ⚠️放量回调 / 🔇缩量
-- **动量**：5日/20日涨跌幅、SMA50 斜率
-
----
-
-## 策略2: VCP Scanner (`vcp_scanner.py` v2.0)
-
-### 概述
-基于 Mark Minervini 的 VCP (Volatility Contraction Pattern) 理论。在已确认 Stage 2 的股票中，寻找波动率持续收缩、成交量枯竭、即将突破的标的。属于**右侧交易**。
-
-### 前置依赖
-- 必须先运行 `stage2_monitor.py`，VCP 从 DB 读取 `strategy_states` 表的 Stage 2 状态
-- 仅分析 `is_active = true` 的 Stage 2 股票
-
-### 6 个条件
-
-| 条件 | 名称 | 参数 | 说明 |
-|------|------|------|------|
-| C1 | 52周回撤 | ≥ -25% | 距52周高点回撤不超过25% |
-| C2 | 20日回撤 | ≥ -10% | 近期紧密盘整 |
-| C3 | 布林带挤压 | BBW 分位 ≤ 25% | 过去120日中波动率处于底部25% |
-| C4 | 成交量枯竭 | 10D/50D < 0.75 且 ≥4/5天缩量 | 卖压完全枯竭 |
-| C5 | SMA50 斜率 | > 0% | 50日均线仍在上升 |
-| C6 | 靠近 SMA10 | ±3% 以内 | 价格贴近短期均线 |
-
-**判定规则**：≥ 4/6 条件满足 = VCP 信号
-
-### VCP Score 评分 (0-100)
-
-| 条件 | 权重 | 说明 |
-|------|------|------|
-| C1 | 15 | 52周位置 |
-| C2 | 20 | 近期紧密度 |
-| C3 | 25 | 布林带挤压（核心） |
-| C4 | 20 | 成交量枯竭 |
-| C5 | 10 | 趋势方向 |
-| C6 | 10 | 价格收敛 |
-| 加分 | +10 | BBW 分位 ≤ 10%（极度压缩） |
-| 加分 | +5 | 5/5天全部缩量 |
-
----
-
-## 策略3: Bottom Fisher (`bottom_fisher.py` v2.0)
-
-### 概述
-左侧抄底策略，寻找"好股票的坏价格"。与 VCP 互补——VCP 追涨已确认的上升趋势，Bottom Fisher 在下跌中寻找反转信号。通过四层递进判断，从质地过滤到K线确认，层层缩小候选范围。
-
-### 扫描范围
-全部 `tickers.json` 中 `enabled: true` 的 monitored 股票（不限于 Stage 2）。
-
-### 四层递进指标体系
-
-#### L1: 质地过滤（"值不值得抄？"）
-
-| 条件 | 名称 | 参数 | 说明 |
-|------|------|------|------|
-| C1 | MA200 位置 | 价格在 MA200 的 -15% ~ +10% 范围内 | 长期趋势未完全破坏 |
-| C2 | Stage 2 质地 | 当前/曾经 Stage 2，或快速检测 ≥4 个关键条件 | 只抄好股票的回调 |
-
-#### L2: 跌幅充分（"跌够了吗？"）
-
-| 条件 | 名称 | 参数 | 说明 |
-|------|------|------|------|
-| C3 | 52周回撤 | 距52周高点 ≤ -15% | 确保跌幅充分 |
-| C4 | 20日回撤 | 距20日高点 ≤ -8% | 近期有明确下跌 |
-| C5 | 支撑位 | 价格在 MA50/MA150/MA200 的 ±3% 内 | 有关键均线支撑 |
-
-#### L3: 底部信号（"底部出现了吗？"）
-
-| 条件 | 名称 | 参数 | 说明 |
-|------|------|------|------|
-| C6 | RSI 超卖/背离 | RSI(14) ≤ 35 或 RSI 底背离 | 动量超卖 |
-| C7 | 成交量枯竭 | 10D均量/50D均量 < 0.6 | 卖压枯竭 |
-| C8 | MACD 背离 | MACD 底背离或柱状图由负转正 | 动量拐头 |
-
-#### L4: K线确认（加分项）
-
-| 条件 | 名称 | 参数 | 说明 |
-|------|------|------|------|
-| B1 | 锤子线/十字星 | 实体 < 全幅30%，下影线 ≥ 实体2倍 | K线反转形态 |
-| B2 | 放量确认 | 当日量 > 前日 × 1.5 | 买方入场确认 |
-
-**判定规则**：≥ 5/8 条件（C1-C8）满足 = 抄底信号
-
-### BF Score 评分 (0-100)
-
-| 层级 | 条件 | 权重 |
-|------|------|------|
-| L1 质地 | C1(8) + C2(7) | 15 |
-| L2 跌幅 | C3(10) + C4(10) + C5(15) | 35 |
-| L3 底部 | C6(15) + C7(10) + C8(10) | 35 |
-| L4 加分 | B1(+10) + B2(+5) | +15 |
-| 特殊加分 | RSI背离 + MACD背离双确认 | +10 |
-
----
-
-## 策略4: Buying Checklist (`buying_checklist.py` v1.0)
-
-### 概述
-多维度买入检查清单策略，综合趋势、动量、成交量和技术形态的买入决策辅助。**不独立产生交易信号，而是作为"终极确认"层**——当其他策略给出方向后，Buying Checklist 回答"现在确实可以下单吗？"。
-
-### 扫描范围
-全部 `tickers.json` 中 `enabled: true` 的 monitored 股票。
-
-### 五层检查体系
-
-#### L1: 趋势确认（"大方向对吗？"）
-
-| 条件 | 名称 | 说明 |
-|------|------|------|
-| C1 | 周线 Elder Impulse | 周线 Elder Impulse 为绿色（趋势+动量同向上）|
-| C2 | 日线均线排列 | EMA8 > EMA21 > EMA50（短中长排列健康）|
-| C3 | 价格在 SMA50 上方 | 短期趋势支撑有效 |
-
-#### L2: 动量健康（"势头够强吗？"）
-
-| 条件 | 名称 | 说明 |
-|------|------|------|
-| C4 | RSI 健康区 | RSI(14) 在 50-70 区间（强而不超买）|
-| C5 | MACD 正向 | MACD 柱状图 > 0 或向上转折 |
-
-#### L3: 价格结构（"位置合理吗？"）
-
-| 条件 | 名称 | 说明 |
-|------|------|------|
-| C6 | 距52周高点 | 回撤在 -25% 以内 |
-| C7 | 均线支撑确认 | 价格在关键均线（MA20/MA50）附近获得支撑 |
-
-#### L4: 成交量确认（"量价配合吗？"）
-
-| 条件 | 名称 | 说明 |
-|------|------|------|
-| C8 | 量价配合 | 上涨放量或突破放量确认 |
-
-#### L5: 综合加分（"有没有锦上添花？"）
-
-| 条件 | 名称 | 说明 |
-|------|------|------|
-| B1 | 多策略共振 | 同时满足 Stage 2 + VCP 或 Stage 2 + Bottom Fisher |
-| B2 | K线形态 | 锤子线/十字星等反转或突破形态 |
-
-**判定规则**：综合评分达到阈值 = 买入检查通过
-
-### BC Score 评分 (0-100)
-
-| 层级 | 权重 | 说明 |
-|------|------|------|
-| L1 趋势 | 25 | Elder Impulse + 均线排列 |
-| L2 动量 | 20 | RSI + MACD |
-| L3 结构 | 20 | 价格位置 + 均线支撑 |
-| L4 量价 | 15 | 成交量确认 |
-| L5 加分 | +20 | 策略共振 + K线形态 |
-
----
-
-## 技术分析模块 (`lib/technical_analysis.py`)
-
-### 概述
-Ticker Detail 页面使用的四大技术指标分析系统，为每只股票生成完整的技术分析报告。复用 `lib/indicators.py` 基础计算函数。
-
-### 四大分析系统
-
-#### ① 均线系统 (Moving Average System)
-
-| 分析项 | 说明 |
-|--------|------|
-| MA 值 | SMA5 / SMA20 / SMA50 / SMA100 / SMA200 |
-| 价格位置 | 每条均线的 above/below 状态 |
-| 均线排列 | 多头排列 / 空头排列 / 混合排列 |
-| 金叉/死叉 | SMA5 与 SMA20 的交叉检测 |
-| EMA | EMA12 / EMA26 辅助判断 |
-
-#### ② 动量指标 (Momentum Indicators)
-
-| 指标 | 参数 | 说明 |
-|------|------|------|
-| RSI | RSI(14) | 超买/超卖/健康区判定 |
-| Stochastic | K(14,3) / D(3) | 随机指标交叉信号 |
-| MACD | (12,26,9) | 零轴 + 信号线 + 柱状图 |
-| ADX | ADX(14) | 趋势强度（强趋势/弱趋势/盘整） |
-| HV30 | 30日历史波动率 | 年化波动率百分比 |
-
-#### ③ 支撑与阻力 (Support & Resistance)
-
-| 分析项 | 说明 |
-|--------|------|
-| 布林带 | 上/中/下轨 + 带宽 + 价格位置（超买/当前附近/超卖） |
-| VWAP | 20 日成交量加权均价 |
-| 统计区间 | 30 日最高/最低 + 价格在区间内的位置百分比 |
-| 52周范围 | 52 周高低点 + 距高点百分比 |
-| 关键支撑/阻力 | 综合 MA + 布林带 + 统计极值识别的关键价位 |
-
-#### ④ 斐波那契回调与延伸 (Fibonacci)
-
-| 分析项 | 说明 |
-|--------|------|
-| 波段识别 | 自动检测近期显著摆幅（swing high / swing low） |
-| 回调水平 | 23.6% / 38.2% / 50% / 61.8% / 78.6% |
-| 延伸目标 | 127.2% / 161.8% / 200% / 261.8% |
-| 当前位置 | 价格处于哪个回调/延伸区间 |
-
----
-
-## 共享库 (lib/)
-
-### `lib/db.py` — SQLite 数据访问层
-- 单一 SQLite 文件 (`data/stock_tracker.db`)，WAL 模式
-- 上下文管理器 `get_db()` 自动提交/回滚
-- 所有 CRUD 操作集中管理，策略脚本零直接 SQL
-- `get_prices_as_dataframe()` 返回兼容旧 CSV 格式的 pandas DataFrame
-- Phase 5 新增：
-  - `get_watchlist_item(symbol)` — 获取单个 watchlist 条目（含已禁用），用于 Web 添加时检查是否曾存在
-  - `set_ticker_enabled(symbol, enabled)` — 设置 ticker 启用/禁用状态（软删除/恢复）
-  - `get_price_count(symbol)` — 获取价格记录数，判断恢复时是否需要重新拉取数据
-  - `get_latest_price_date(symbol)` — 获取 ticker 最新价格日期，用于增量数据拉取
-- Phase 7 新增：
-  - `record_pipeline_run(run_date, strategy, status)` — 记录 Pipeline 步骤执行状态（UPSERT）
-  - `get_pipeline_runs(run_date)` — 获取某日所有步骤执行记录
-  - `is_pipeline_step_completed(run_date, strategy)` — 检查步骤是否已成功完成（幂等检查）
-  - `record_notification(notify_date, channel, strategy, status)` — 记录推送结果（UPSERT）
-  - `is_notification_sent(notify_date, strategy)` — 检查推送是否已发送（幂等检查）
-  - `get_notification_log(notify_date)` — 获取某日所有推送记录
-
-### `lib/config.py` — 配置加载 & 观察列表同步
-- 从 `config/tickers.json` 读取配置
-- `sync_watchlist()` 幂等同步到数据库 `watchlist` 表
-- `get_monitored_tickers()` / `get_yfinance_tickers()` 按分组获取
-
-### `lib/indicators.py` — 共享技术指标库
-从各策略脚本中提取的公共技术指标函数，避免重复代码：
-
-| 指标 | 函数 |
-|------|------|
-| SMA / EMA | `sma()`, `ema()` |
-| RSI (Wilder 平滑) | `rsi()` |
-| MACD | `macd()` → (line, signal, histogram) |
-| ATR | `atr()` |
-| 布林带宽度 | `bollinger_bandwidth()`, `bbw_percentile()` |
-| 连涨连跌 | `consecutive_streak()` |
-| RSI 底背离 | `detect_rsi_divergence()` |
-| MACD 底背离 | `detect_macd_divergence()` |
-| K线形态 | `detect_hammer()`（锤子线/十字星） |
-| 涨跌幅 | `pct_change()`, `pct_from_value()` |
-| 周线重采样 | `resample_weekly()` |
-| Elder Impulse | `elder_impulse_weekly()`（趋势+动量复合系统） |
-| 时区工具 | `normalize_tz()` |
-
-### `lib/models.py` — 数据模型定义
-使用 Python `dataclass` 定义各策略的输入/输出结构，提供 `to_db_dict()` 和 `from_db_row()` 双向转换：
-
-- `TickerInfo` — 观察列表中的股票信息
-- `StrategyResult` — 策略结果基类
-- `Stage2Result` / `VCPResult` / `BottomFisherResult` / `BuyingChecklistResult` — 策略特化结果
-- `MarketPulseResult` — 市场宏观状态
-- `SignalChange` — 信号变化事件
-
-### `lib/report.py` — 报告生成共享工具
-- Jinja2 环境管理，加载 `templates/*.j2` 模板
-- 自定义过滤器：`tg_escape`、`score_emoji_*`、`chg_emoji`、`score_bar`、`progress_bar`、`fmt_pct`、`fmt_price`、`fmt_val`
-- `split_telegram_message()` — 按段落边界分割长消息（Telegram 4000 字符限制）
-- `save_reports()` — 统一保存 MD + Telegram HTML + manifest
-
-### `lib/notifier.py` — Telegram 推送引擎（Phase 7 新增）
-
-Telegram Bot API 封装，为 `daily_pipeline.py` 提供稳健的推送能力：
-
-| 特性 | 说明 |
-|------|------|
-| **自动分段** | 超过 4000 字符自动按段落边界分割（复用 `lib/report.py` 的 `split_telegram_message()`） |
-| **指数退避重试** | 发送失败自动重试（最多 3 次），429 限流时按 `retry_after` 等待 |
-| **HTML → 纯文本降级** | Telegram HTML 解析错误时自动降级为纯文本重发 |
-| **幂等推送** | 通过 `notification_log` 表防止重复推送 |
-| **Dry Run** | `--dry-run` 模式下渲染消息但不实际发送 |
-| **零外部依赖** | 使用 `urllib` 调用 Telegram API，不依赖 `requests` 等第三方库 |
-
-核心组件：
-- `TelegramNotifier` — Bot API 客户端（send / test_connection）
-- `TelegramAPIError` — 封装 Telegram API 错误（含 status_code / retry_after）
-- `load_telegram_config()` — 从环境变量或 `.env` 加载配置
-- `send_strategy_report()` — 高层接口：渲染模板 → 推送 → 可选磁盘保存
-- `send_text_message()` — 发送纯文本/HTML 消息（带幂等检查）
-
-### `lib/pipeline.py` — Web 单 Ticker 管道 + 全量刷新管道（Phase 5）
-
-Web 添加 ticker 和全量刷新价格时使用的完整处理管道：
-
-#### `validate_ticker(symbol)` — 三层验证
-
-| 层级 | 方法 | 耗时 | 说明 |
-|------|------|------|------|
-| L1 | 正则格式校验 | ~0ms | 1-5 个大写字母，可带 `.A`/`.B` 后缀 |
-| L2 | `yf.Ticker(s).info` 元数据检查 | ~1s | 确认 `shortName`/`longName` 存在 |
-| L3 | 试拉 5 天历史数据 | ~1s | 确认数据源可用，非极新 IPO |
-
-返回包含 `valid`、`name`、`sector`、`exchange`、`market_price` 等元数据的验证结果。
-
-#### `run_single_ticker_pipeline(symbol, name, sector)` — 完整策略管道
-
-| 步骤 | 操作 | 说明 |
-|------|------|------|
-| Step 1 | 拉取 365 天历史价格（yfinance）→ `upsert_prices()` | 价格数据入库 |
-| Step 2 | 运行 Stage 2 分析 → `save_strategy_result()` + `upsert_strategy_state()` | 趋势确认 |
-| Step 3 | 运行 VCP 分析（仅当 Stage 2 active） | 右侧追涨 |
-| Step 4 | 运行 Bottom Fisher 分析 | 左侧抄底 |
-| Step 5 | 运行 Buying Checklist 分析 | 综合买入确认 |
-
-**特殊处理**：管道使用当天日期 (`datetime.now()`) 作为策略结果的 `date_str`，这可能与批量 cron 产生的 `market_pulse.latest_date` 不同。Web 端（watchlist/ticker/API）通过 **fallback 查询**机制解决此日期不匹配问题——当按 `latest_date` 查不到策略结果时，回退查询该 ticker 最新的一条结果。
-
-#### `refresh_all_prices()` — 全量刷新 + 自动 Market Pulse
-
-Web Dashboard "更新价格" 按钮触发的全量刷新管道。v2.1 改进：刷新完成后自动调用 `_update_market_pulse()` 更新市场宏观状态，确保 `market_pulse.date` = 策略 `date_str` = 今天，解决页面因日期不一致查不到策略结果的问题。
-
-#### `_update_market_pulse()` — 内部辅助函数
-
-从 `scripts/market_pulse.py` 提取核心分析逻辑，运行 SPY/QQQ/IWM/VIX 分析 + 市场宽度 + 综合评分，写入 `market_pulse` 表。被 `refresh_all_prices()` 和 `save_prices_yfinance.py` 在完成后自动调用。
-
----
-
-## Jinja2 报告模板 (templates/)
-
-每个策略各有 Markdown 存档和 Telegram 推送两种格式：
-
-| 模板文件 | 用途 |
-|----------|------|
-| `stage2_md.j2` | Stage 2 报告 Markdown 版 |
-| `stage2_tg.j2` | Stage 2 报告 Telegram HTML 版 |
-| `vcp_md.j2` | VCP 扫描报告 Markdown 版 |
-| `vcp_tg.j2` | VCP 扫描报告 Telegram HTML 版 |
-| `bottom_md.j2` | 抄底信号报告 Markdown 版 |
-| `bottom_tg.j2` | 抄底信号报告 Telegram HTML 版 |
-| `pulse_md.j2` | 市场脉搏报告 Markdown 版 |
-| `pulse_tg.j2` | 市场脉搏报告 Telegram HTML 版 |
-
----
-
-## Phase 7: Daily Pipeline + Telegram 推送 (`daily_pipeline.py`)
-
-### 概述
-
-三阶段自动化 Pipeline，统一调度每日数据更新和 Telegram 推送，替代旧的分散式 Shell 脚本调用。
-
-### 架构设计
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                   daily_pipeline.py                        │
-│                                                            │
-│  Phase 1: DATA INGESTION                                   │
-│    └── save_prices_yfinance.py --mode all                  │
-│                                                            │
-│  Phase 2: STRATEGY COMPUTATION                             │
-│    ├── market_pulse.py --cron                              │
-│    ├── stage2_monitor.py --cron                            │
-│    ├── vcp_scanner.py --cron                               │
-│    ├── bottom_fisher.py --cron                             │
-│    └── buying_checklist.py --cron                          │
-│                                                            │
-│  Phase 3: NOTIFICATION                                     │
-│    ├── Daily Summary (cross-strategy overview)             │
-│    ├── Market Pulse report (pulse_tg.j2)                   │
-│    ├── Stage 2 report (stage2_tg.j2)                       │
-│    ├── VCP report (vcp_tg.j2)                              │
-│    └── Bottom Fisher report (bottom_tg.j2)                 │
-│                                                            │
-│  幂等控制:                                                  │
-│    pipeline_runs → 步骤执行状态（自动跳过已完成）            │
-│    notification_log → 推送记录（防止重复发送）              │
-└──────────────────────────────────────────────────────────┘
-```
-
-### 三阶段详解
-
-| Phase | 职责 | 关键特性 |
-|-------|------|---------|
-| **Phase 1** | 数据采集 | 调用 `save_prices_yfinance.py`，10 分钟超时 |
-| **Phase 2** | 策略计算 | 顺序执行 5 个策略脚本，每个 5 分钟超时，失败不阻塞后续 |
-| **Phase 3** | Telegram 推送 | 从 DB 读取数据构建模板上下文 → 渲染 → 推送，1.5 秒间隔避免限流 |
-
-### 推送消息内容
-
-| 推送项 | 内容 | 发送顺序 |
-|--------|------|---------|
-| **Daily Summary** | 市场 Regime + Distribution Days + Stage 2 统计 + VCP/Bottom Fisher 信号 + 新进入/退出信号 | 1st |
-| **Market Pulse** | 完整市场温度计报告（SPY/QQQ/IWM + VIX + 宽度 + Distribution Days + Regime Change） | 2nd |
-| **Stage 2** | Stage 2 确认股票列表 + 接近 Stage 2 的股票 + 今日信号变化 | 3rd |
-| **VCP** | VCP 信号列表 + 接近 VCP 的股票 + 今日变化 | 4th |
-| **Bottom Fisher** | 抄底信号列表 + 接近信号的股票 + 今日变化 | 5th |
-
-### Telegram Bot 配置
+The backend is organized around a SQLite database and a small set of scripts. Strategy scripts read from the database, calculate signals, persist results, and render reports through shared library code.
+
+## Core Components
+
+| Path | Responsibility |
+| --- | --- |
+| `config/tickers.json` | Source-of-truth watchlist configuration. Contains monitored equities plus market/index symbols used by yfinance. |
+| `scripts/save_prices_yfinance.py` | Main price collection entry point. Fetches incremental OHLCV data, writes SQLite rows, and can trigger strategy refreshes. |
+| `scripts/save_prices.py` | Legacy Stooq collector kept for compatibility. It is not the current primary collection path. |
+| `scripts/daily_pipeline.py` | Three-phase daily workflow: data collection, strategy calculation/report generation, and optional notification delivery. |
+| `scripts/market_pulse.py` | Market regime analysis using SPY, QQQ, IWM, VIX, breadth, and distribution-day pressure. |
+| `scripts/stage2_monitor.py` | Stan Weinstein / Minervini Stage 2 trend detection. |
+| `scripts/vcp_scanner.py` | VCP scanner for Stage 2 names with volatility contraction and volume dry-up. |
+| `scripts/bottom_fisher.py` | Mean-reversion / bottom-fishing scanner for quality stocks after pullbacks. |
+| `scripts/buying_checklist.py` | Final buy-readiness checklist combining trend, momentum, structure, volume, and strategy confluence. |
+| `lib/db.py` | SQLite data-access layer, schema creation, UPSERT helpers, and idempotency tables. |
+| `lib/config.py` | Loads `tickers.json` and syncs the configured watchlist into SQLite. |
+| `lib/indicators.py` | Shared technical indicators: SMA, EMA, RSI, MACD, ATR, Bollinger bandwidth, streaks, divergence, candles, weekly resampling, Elder Impulse. |
+| `lib/models.py` | Dataclass models for tickers, strategy results, market pulse, and signal changes. |
+| `lib/report.py` | Jinja2 report rendering, Telegram-safe formatting helpers, and message splitting. |
+| `lib/notifier.py` | Telegram delivery with retry, HTML fallback, dry-run mode, and notification idempotency. |
+| `lib/pipeline.py` | Backend pipeline helpers for ticker validation, price refresh, strategy refresh, and market pulse updates. |
+| `templates/*.j2` | Markdown and Telegram HTML report templates. |
+| `reports/daily/` | Generated daily report artifacts. |
+
+## Data Model
+
+The backend persists state in `data/stock_tracker.db`. The schema is created and managed by `lib/db.py`.
+
+| Table | Purpose | Primary key |
+| --- | --- | --- |
+| `watchlist` | Configured symbols, names, sectors, enabled state, and source metadata. | `symbol` |
+| `stock_prices` | Daily OHLCV price history. | `(symbol, date)` |
+| `strategy_results` | Per-symbol, per-date strategy outputs with JSON details and metrics. | `(symbol, date, strategy)` |
+| `strategy_states` | Latest active/inactive state for each symbol and strategy. | `(symbol, strategy)` |
+| `signal_changes` | Signal entry/exit history. | `id` |
+| `market_pulse` | Daily market regime and distribution-day analysis. | `date` |
+| `pipeline_runs` | Daily pipeline step status for idempotent reruns. | `(run_date, strategy)` |
+| `notification_log` | Telegram delivery status for idempotent notifications. | `(notify_date, channel, strategy)` |
+| `db_meta` | Database metadata and migration/version markers. | `key` |
+
+Design notes:
+
+- `strategy_results.conditions`, `condition_details`, and `metrics` are JSON payloads so individual strategies can evolve without schema churn.
+- `pipeline_runs` and `notification_log` make daily runs safe to retry.
+- SQLite WAL mode is used for better read concurrency.
+- The DAL handles numpy-compatible JSON serialization for strategy metrics.
+
+## Data Flow
+
+1. `config/tickers.json` defines enabled equities and market/index symbols.
+2. `lib.config.sync_watchlist()` syncs that configuration into `watchlist`.
+3. `scripts/save_prices_yfinance.py` checks the latest stored date per symbol and fetches only missing price rows.
+4. Strategy scripts read normalized prices through `lib/db.py` and shared indicators from `lib/indicators.py`.
+5. Strategy outputs are written to `strategy_results`, `strategy_states`, and `signal_changes`.
+6. `lib/report.py` renders Markdown and Telegram HTML reports from `templates/*.j2` into `reports/daily/`.
+7. `scripts/daily_pipeline.py` coordinates the full backend run and uses idempotency tables to avoid duplicate work.
+8. `lib/notifier.py` optionally sends rendered reports to Telegram and records delivery status.
+
+## Strategy Layer
+
+| Strategy | Script | Role |
+| --- | --- | --- |
+| Market Pulse | `scripts/market_pulse.py` | Macro regime gauge. Scores SPY/QQQ/IWM trend, VIX, internal breadth, sector heat, and distribution days. |
+| Stage 2 Monitor | `scripts/stage2_monitor.py` | Trend foundation. Detects stocks meeting Stage 2 / trend-template requirements. |
+| VCP Scanner | `scripts/vcp_scanner.py` | Right-side setup scanner. Looks for volatility contraction and volume dry-up among Stage 2 names. |
+| Bottom Fisher | `scripts/bottom_fisher.py` | Left-side pullback scanner. Looks for oversold quality names with support and reversal evidence. |
+| Buying Checklist | `scripts/buying_checklist.py` | Final confirmation layer. Combines trend, momentum, price structure, volume, and strategy confluence. |
+
+## Reports and Notifications
+
+Reports are generated from database results, not from ad hoc script output. The shared report layer provides:
+
+- Markdown report rendering for local review.
+- Telegram HTML rendering for push notifications.
+- Telegram escaping and formatting filters.
+- Long-message splitting near paragraph boundaries.
+- Report manifests under `reports/daily/`.
+
+Telegram delivery is optional and controlled by environment configuration. `lib/notifier.py` supports dry-run mode, retry/backoff, HTML-to-text fallback, and notification de-duplication through `notification_log`.
+
+## Common Commands
+
+Run commands from the repository root.
 
 ```bash
-# 1. 在 Telegram 中搜索 @BotFather，创建新 Bot，获取 token
-# 2. 获取 chat_id：搜索 @userinfobot 或 @RawDataBot，发送消息获取
-
-# 3. 配置环境变量
-cp .env.example .env
-# 编辑 .env:
-# TELEGRAM_BOT_TOKEN=123456:ABCdefGHIjklMNOpqrSTUvwxYZ
-# TELEGRAM_CHAT_ID=123456789
-
-# 4. 测试连通性
-python scripts/daily_pipeline.py --test-bot
-
-# 5. 测试推送内容（不实际发送）
-python scripts/daily_pipeline.py --dry-run
-```
-
-### 运行模式
-
-| 模式 | 命令 | 说明 |
-|------|------|------|
-| 完整 Pipeline | `python scripts/daily_pipeline.py` | Phase 1+2+3 全部执行 |
-| 仅推送 | `--notify-only` | 跳过数据更新，从 DB 读取已有数据推送 |
-| 仅数据 | `--no-notify` | 执行 Phase 1+2，不推送 |
-| 测试推送 | `--dry-run` | 渲染消息到日志，不实际发送 |
-| 强制重跑 | `--force` | 忽略幂等检查，强制重跑所有步骤 |
-| 测试 Bot | `--test-bot` | 调用 getMe + 发送测试消息 |
-
-### Shell 脚本封装
-
-| 脚本 | 用途 | 场景 |
-|------|------|------|
-| `daily_pipeline.sh` | Pipeline 的薄封装，自动检测 Docker/venv | 通用 crontab 入口 |
-| `daily_update.sh` | 同上，额外支持 `--docker`/`--venv` 强制参数 | 服务器部署，兼容旧 crontab |
-
-两者底层都委托给 `daily_pipeline.py`，所有 pipeline 参数支持透传。
-
----
-
-## 使用方式
-
-### 首次安装
-
-```bash
-# 1. 安装依赖
+# Install dependencies
 pip install -r requirements.txt
 
-# 2. 初始化数据库
-python -m lib.db init
+# Inspect database status
+python -m lib.db stats
 
-# 3. 同步观察列表
-python lib/config.py
+# Sync config/tickers.json into the database
+python -m lib.config
 
-# 4. 配置 Telegram 推送（可选，用于 Phase 7 推送功能）
-cp .env.example .env
-# 编辑 .env，填入 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID
-
-# 5. 从旧项目迁移数据（可选）
-python scripts/migrate_prices.py --source D:/eh/projects/workspace/stocks
-```
-
-### 日常运行
-
-```bash
-# 🆕 推荐方式 — 三阶段 Pipeline（数据采集 + 策略计算 + Telegram 推送）
-python scripts/daily_pipeline.py               # 完整 pipeline
-python scripts/daily_pipeline.py --dry-run     # 渲染消息但不发送（测试推送内容）
-python scripts/daily_pipeline.py --no-notify   # 只更新数据，不推送
-python scripts/daily_pipeline.py --notify-only # 只推送（数据已在 DB）
-python scripts/daily_pipeline.py --force       # 强制重跑所有步骤（忽略幂等）
-python scripts/daily_pipeline.py --test-bot    # 测试 Telegram Bot 连通性
-
-# Shell 封装（自动检测 Docker/venv 环境，推荐用于 crontab）
-bash scripts/daily_update.sh                    # 完整 pipeline
-bash scripts/daily_update.sh --docker           # 强制 Docker 模式
-bash scripts/daily_update.sh --venv             # 强制 venv 模式
-bash scripts/daily_update.sh --dry-run          # 透传 pipeline 参数
-
-# 一键运行（旧方式，仍可用）— v2.1 增量模式自动完成价格拉取 + 策略计算 + Market Pulse
+# Fetch incremental prices through the current main collector
 python scripts/save_prices_yfinance.py
 
-# 或分步手动运行（适合调试）
-python scripts/market_pulse.py             # 市场温度计
-python scripts/stage2_monitor.py           # Stage 2 趋势确认
-python scripts/vcp_scanner.py              # VCP 择时信号
-python scripts/bottom_fisher.py            # 抄底信号扫描
-python scripts/buying_checklist.py        # 买入检查清单
+# Run individual strategies
+python scripts/market_pulse.py
+python scripts/stage2_monitor.py
+python scripts/vcp_scanner.py
+python scripts/bottom_fisher.py
+python scripts/buying_checklist.py
 
-# 静默模式（模拟 cron 行为，压制 stdout）
-python scripts/market_pulse.py --cron
-python scripts/stage2_monitor.py --cron
-python scripts/vcp_scanner.py --cron
-python scripts/bottom_fisher.py --cron
-python scripts/buying_checklist.py --cron
-```
+# Run the daily backend pipeline without sending Telegram messages
+python scripts/daily_pipeline.py --dry-run
 
-### 命令行参数
-
-| 脚本 | 参数 | 说明 |
-|------|------|------|
-| `daily_pipeline.py` | *(无参数)* | 完整三阶段 Pipeline（数据+策略+推送） |
-| `daily_pipeline.py` | `--notify-only` | 跳过数据更新，只从 DB 读取并推送 |
-| `daily_pipeline.py` | `--no-notify` | 只更新数据和策略，不推送 Telegram |
-| `daily_pipeline.py` | `--dry-run` | 渲染推送消息但不实际发送 |
-| `daily_pipeline.py` | `--force` | 强制重跑所有步骤（忽略幂等检查） |
-| `daily_pipeline.py` | `--test-bot` | 测试 Telegram Bot 连通性 |
-| `save_prices_yfinance.py` | `--mode all\|yfinance_only` | 数据拉取范围（默认 all） |
-| `save_prices_yfinance.py` | `--test TICKER` | 测试单只 ticker |
-| `save_prices_yfinance.py` | `--no-csv` | 不保存 CSV 备份 |
-| `market_pulse.py` | `--cron` | 压制 stdout 输出 |
-| `stage2_monitor.py` | `--cron` | 压制 stdout 输出 |
-| `vcp_scanner.py` | `--cron` | 压制 stdout 输出 |
-| `bottom_fisher.py` | `--cron` | 压制 stdout 输出 |
-| `buying_checklist.py` | `--cron` | 压制 stdout 输出 |
-
-### 数据库工具
-
-```bash
-python -m lib.db init    # 初始化数据库（幂等）
-python -m lib.db stats   # 查看数据库统计信息
-```
-
----
-
-## 目录结构
-
-```
-stock-tracker/
-├── config/
-│   └── tickers.json              # 监控股票列表
-├── data/
-│   ├── stock_tracker.db          # SQLite 数据库（.gitignore）
-│   └── prices/                   # CSV 备份缓存（.gitignore）
-├── lib/
-│   ├── __init__.py               # 包初始化
-│   ├── config.py                 # 配置加载 & watchlist 同步
-│   ├── db.py                     # SQLite 数据访问层（~900行，项目核心）
-│   ├── indicators.py             # 共享技术指标库（含 Elder Impulse）
-│   ├── models.py                 # 数据模型（dataclass）
-│   ├── notifier.py               # 🆕 Telegram Bot 推送引擎（自动分段/重试/幂等）
-│   ├── pipeline.py               # Web 单 Ticker 管道 + 全量刷新 + 自动 Market Pulse
-│   ├── report.py                 # 报告生成共享工具（Jinja2）
-│   └── technical_analysis.py     # 四大技术分析系统（均线/动量/支撑阻力/斐波那契）
-├── templates/
-│   ├── stage2_md.j2 / stage2_tg.j2
-│   ├── vcp_md.j2 / vcp_tg.j2
-│   ├── bottom_md.j2 / bottom_tg.j2
-│   └── pulse_md.j2 / pulse_tg.j2
-├── scripts/
-│   ├── save_prices.py            # ⚠️ 已弃用（Stooq 数据源不可用）
-│   ├── save_prices_yfinance.py   # 数据采集 v2.1（yfinance + SQLite + 增量 + 自动联动）
-│   ├── market_pulse.py           # 策略0: 市场温度计 v4.0（含 Distribution Day 分析）
-│   ├── stage2_monitor.py         # 策略1: Stage 2 趋势确认 v4.0
-│   ├── vcp_scanner.py            # 策略2: VCP 右侧追涨 v2.0
-│   ├── bottom_fisher.py          # 策略3: 抄底左侧信号 v2.0
-│   ├── buying_checklist.py       # 策略4: 买入检查清单 v1.0
-│   ├── daily_pipeline.py         # 🆕 三阶段 Pipeline 调度器（数据+策略+推送）
-│   ├── daily_pipeline.sh         # 🆕 Pipeline 的 Shell 封装（venv/Docker 自动检测）
-│   ├── daily_update.sh           # 📝 每日更新入口（已改为 daily_pipeline.py 的薄封装）
-│   ├── docker_update.sh          # Docker 代码更新脚本（git pull + rebuild）
-│   ├── deploy_docker_ol8.sh      # Oracle Linux 8 一键部署脚本
-│   └── migrate_prices.py         # 数据迁移工具（CSV/JSON → SQLite）
-├── reports/
-│   └── daily/                    # 每日报告存档（.md + .html + manifest）
-├── web/                          # Phase 4-6: Web Dashboard
-│   ├── app.py                    # FastAPI 主入口
-│   ├── deps.py                   # Jinja2 模板 + 过滤器 + i18n 注入
-│   ├── routes/                   # 路由（dashboard/watchlist/ticker/api）
-│   ├── templates/                # HTML 模板（base/dashboard/watchlist/detail）
-│   ├── static/                   # CSS（深色主题）+ JS（排序/筛选 + i18n）
-│   └── i18n/                     # 国际化模块
-│       ├── __init__.py
-│       ├── core.py               # i18n 引擎（加载/查找/检测/翻译工厂）
-│       └── locales/
-│           ├── en.json           # 英文语言包
-│           └── zh.json           # 中文语言包
-├── logs/                         # 日志文件（.gitignore）
-├── .env.example                  # 🆕 环境变量模板（Telegram token 等）
-├── requirements.txt              # Python 依赖
-├── Dockerfile                    # Docker 多阶段构建
-├── docker-compose.yml            # Docker Compose 部署
-├── DEPLOY.md                     # 部署指南
-├── .gitignore
-├── README.md                     # 本文档（中文）
-└── README_EN.md                  # English Version
-```
-
----
-
-## Pipeline 执行顺序
-
-### 方式一：三阶段 Pipeline（推荐，Phase 7）
-
-```bash
+# Run the daily backend pipeline with notification delivery enabled
 python scripts/daily_pipeline.py
-# Phase 1: 数据采集 — save_prices_yfinance.py（增量拉取价格）
-# Phase 2: 策略计算 — market_pulse → stage2 → vcp → bottom_fisher → buying_checklist
-# Phase 3: Telegram 推送 — daily_summary + 各策略报告（从 DB 读取，幂等）
 ```
 
-三阶段架构的优势：
-- **幂等**：每步执行状态记录到 `pipeline_runs` 表，重跑自动跳过已完成步骤
-- **可重入**：`--notify-only` 可单独重试推送，`--force` 可强制全量重跑
-- **解耦**：推送数据从 DB 读取（不依赖内存），Phase 3 可独立于 Phase 1+2 运行
-- **交易日检测**：自动跳过周末（可用 `--force` 覆盖）
+## Environment
 
-### 方式二：一键执行（旧方式，仍可用）
+Create a local `.env` file from `.env.example` when Telegram delivery or deployment-specific settings are needed. Do not commit secrets.
+
+Typical notification settings:
 
 ```bash
-python scripts/save_prices_yfinance.py
-# 自动完成：增量拉取价格 → 策略计算 → Market Pulse 更新
-# ⚠️ 不含 Telegram 推送
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
 ```
 
-### 方式三：分步手动执行（适合调试）
+## Frontend Refactor Boundary
 
-```bash
-Step 1:  python scripts/save_prices_yfinance.py  # yfinance 数据采集（增量模式）
-Step 2:  python scripts/market_pulse.py --cron    # 市场温度计
-Step 3:  python scripts/stage2_monitor.py --cron  # Stage 2 趋势确认
-Step 4:  python scripts/vcp_scanner.py --cron     # VCP 择时信号
-Step 5:  python scripts/bottom_fisher.py --cron   # 抄底信号扫描
-Step 6:  python scripts/buying_checklist.py --cron # 买入检查清单
-```
+For frontend refactoring, keep these backend contracts stable unless a coordinated API change is planned:
 
-- Step 1 失败不影响后续步骤（Market Pulse 会优雅降级）
-- Step 2 (Market Pulse) 最先推送，先看全局再看个股
-- Step 4 (VCP) 依赖 Step 3 (Stage 2) 成功运行
-- Step 5 (Bottom Fisher) 独立运行，不依赖 Stage 2 结果
-- Step 6 (Buying Checklist) 独立运行，综合多策略状态做买入确认
-- 每步失败不影响后续步骤（除 VCP 依赖 Stage 2）
+- `data/stock_tracker.db` schema and DAL behavior in `lib/db.py`.
+- Watchlist semantics from `config/tickers.json` and `lib/config.py`.
+- Strategy names and result shape stored in `strategy_results` and `strategy_states`.
+- Report generation APIs in `lib/report.py`.
+- Pipeline helper behavior in `lib/pipeline.py` for ticker validation, refresh, and strategy execution.
+- Daily report artifact paths under `reports/daily/`.
 
-### Web 全量刷新数据流
-
-```
-Web "更新价格" 按钮 (refresh_all_prices):
-  watchlist → yfinance → stock_prices ✅
-                       → strategy_results (date=今天) ✅
-                       → strategy_states ✅
-                       → market_pulse (date=今天) ✅  ← 自动联动
-
-脚本 save_prices_yfinance.py (v2.1):
-  yfinance → stock_prices (增量) ✅
-           → strategy_results (date=今天) ✅  ← 自动联动
-           → strategy_states ✅              ← 自动联动
-           → market_pulse (date=今天) ✅      ← 自动联动
-
-页面渲染:
-  market_pulse (读) → latest_date = 今天
-  strategy_results WHERE date=今天 (读) → ✅ 日期一致！
-  （即使不一致也有 fallback 查最新记录）
-```
-
-### Daily Pipeline 三阶段数据流 (Phase 7)
-
-```
-daily_pipeline.py:
-  Phase 1: 数据采集
-    save_prices_yfinance.py --mode all → stock_prices ✅
-    → 记录到 pipeline_runs (strategy='prices', status='ok')
-
-  Phase 2: 策略计算
-    market_pulse.py --cron    → market_pulse ✅     → pipeline_runs
-    stage2_monitor.py --cron  → strategy_results ✅ → pipeline_runs
-    vcp_scanner.py --cron     → strategy_results ✅ → pipeline_runs
-    bottom_fisher.py --cron   → strategy_results ✅ → pipeline_runs
-    buying_checklist.py --cron → strategy_results ✅ → pipeline_runs
-
-  Phase 3: Telegram 推送（从 DB 读取，不依赖内存）
-    DB → 构建模板上下文 → Jinja2 渲染 → Telegram Bot API
-    → 推送: Daily Summary → Market Pulse → Stage 2 → VCP → Bottom Fisher
-    → 记录到 notification_log (status='sent', message_id=xxx)
-    → 同时保存 reports/daily/ 存档
-
-  幂等控制:
-    pipeline_runs:   检查 (run_date, strategy) 是否已 status='ok'
-    notification_log: 检查 (notify_date, channel, strategy) 是否已 status='sent'
-```
-
----
-
-## 参数调优指南
-
-所有策略参数均集中在各 Python 脚本顶部的 `*_PARAMS` 字典中，修改后立即生效。
-
-### VCP Scanner 关键参数
-
-```python
-VCP_PARAMS = {
-    "bbw_percentile_threshold": 25,   # ↓ 更严格（如15），↑ 更宽松（如35）
-    "vol_ratio_threshold": 0.75,      # ↓ 要求更极致缩量
-    "strong_signal_min": 4,           # ↑ 减少信号，↓ 增加信号
-}
-```
-
-### Bottom Fisher 关键参数
-
-```python
-BF_PARAMS = {
-    "min_drawdown_from_52w_high": -15,  # ↑ 不需要跌很多，↓ 要求跌更深
-    "rsi_oversold": 35,                 # ↑ 更宽松，↓ 只抓极端超卖
-    "vol_ratio_threshold": 0.6,         # ↑ 更宽松，↓ 要求更极致缩量
-    "support_proximity_pct": 3.0,       # ↑ 支撑判断更宽松
-    "strong_signal_min": 5,             # ↑ 减少信号，↓ 增加信号
-}
-```
-
-### Buying Checklist 关键参数
-
-```python
-BC_PARAMS = {
-    "elder_impulse_required": "green",    # 周线 Elder Impulse 颜色要求
-    "rsi_healthy_low": 50,                # ↓ RSI 下限更宽松
-    "rsi_healthy_high": 70,               # ↑ RSI 上限，避免超买
-    "macd_positive_required": True,       # MACD 正向确认
-    "max_drawdown_from_52w": -25,         # ↑ 允许更大回撤
-    "strong_signal_min": 6,               # ↑ 减少信号，↓ 增加信号
-}
-```
-
----
-
-## 国际化 (i18n) — Phase 6 新增
-
-### 概述
-
-Web Dashboard 全面支持中英文双语切换。默认语言为英文，用户可通过导航栏语言按钮切换至中文。
-
-### 语言检测优先级
-
-| 优先级 | 来源 | 说明 |
-|--------|------|------|
-| 1 | `?lang=xx` 查询参数 | URL 显式指定 |
-| 2 | `lang` Cookie | 浏览器记住的偏好 |
-| 3 | `Accept-Language` 请求头 | 浏览器默认语言 |
-| 4 | 默认 `en` | 兜底英文 |
-
-### 覆盖范围
-
-| 层级 | 范围 | 实现方式 |
-|------|------|----------|
-| HTML 模板 | 4 个页面模板（base/dashboard/watchlist/ticker_detail） | Jinja2 `_t()` 函数 |
-| JavaScript | main.js 所有用户可见文本 | `window.I18N` 语言包 + `_t()` 函数 |
-| API 响应 | api.py 所有消息（成功/错误/提示） | `get_translator()` 工厂函数 |
-| 后端过滤器 | deps.py 中的 regime_label / change_type 等映射 | i18n 上下文注入 |
-| 通知模板 | 8 个 `.j2` 通知模板（Markdown + Telegram） | 直接英文化 |
-
-### 语言包结构
-
-语言包位于 `web/i18n/locales/`，采用 JSON 格式 + 点分隔嵌套键：
-
-```json
-{
-  "nav": {
-    "dashboard": "Dashboard",
-    "watchlist": "Watchlist"
-  },
-  "dashboard": {
-    "title": "Market Overview",
-    "market_pulse": "Market Pulse"
-  }
-}
-```
-
-查找支持 fallback 链：`请求语言 → 英文 → 原始 key`。支持 `{placeholder}` 变量插值。
-
----
-
-## 依赖
-
-| 依赖 | 版本 | 用途 |
-|------|------|------|
-| `pandas` | ≥ 2.0.0 | 核心数据处理 |
-| `numpy` | ≥ 1.24.0 | 数值计算 |
-| `yfinance` | ≥ 0.2.30 | Yahoo Finance 数据源 |
-| `pandas-datareader` | ≥ 0.10.0 | 辅助数据获取 |
-| `jinja2` | ≥ 3.1.0 | 模板引擎 |
-| *SQLite* | *内置* | 数据库（Python 标准库） |
-| `fastapi` | ≥ 0.100.0 | Web 框架 (Phase 4) |
-| `uvicorn` | ≥ 0.23.0 | ASGI 服务器 (Phase 4) |
-
----
-
-## Phase 4: Web Dashboard
-
-### 概述
-
-基于 FastAPI + Jinja2 SSR + Chart.js 的本地 Web Dashboard，提供三个核心页面，复用 Phase 1-3 的全部 `lib/db.py` 查询 API，零数据库改造。Phase 6 新增：国际化支持（中/英双语）+ 技术分析四标签面板 + 四策略状态卡片。Phase 7 新增：Daily Pipeline 三阶段调度 + Telegram 推送引擎。
-
-### 启动方式
-
-```bash
-# 方式一：直接启动
-python -m web.app
-
-# 方式二：使用 uvicorn（支持热重载）
-uvicorn web.app:app --reload --port 8000
-
-# 打开浏览器访问
-# http://127.0.0.1:8000
-```
-
-> 📖 **完整部署指南**（含 Linux 服务器 / Oracle Cloud / 域名配置 / HTTPS）请参见 [DEPLOY.md](DEPLOY.md)
-
-### 三个核心页面
-
-| 页面 | 路径 | 功能 |
-|------|------|------|
-| **Dashboard** | `/` | Market Pulse 状态 + Distribution Days 指标条 + 四策略信号摘要（Stage 2 / VCP / Bottom Fisher / Buying Checklist）+ 近期信号变化 + 30天走势图 |
-| **Watchlist** | `/watchlist` | 全部监控股票的多策略横向对照表（四策略状态/分数一览），支持板块筛选/搜索/仅信号过滤 + **Ticker 新增/删除** |
-| **Ticker Detail** | `/ticker/{symbol}` | 个股四策略状态卡片 + 四标签技术分析（均线/动量/支撑阻力/斐波那契）+ 条件明细 + 关键指标 + 信号历史 + Score 走势图 |
-
-### Web Ticker 管理（Phase 5 新增）
-
-通过 Watchlist 页面的 **"➕ 添加 Ticker"** 按钮和每行的 **"×" 移除按钮**，直接在 Web 上管理观察列表，无需编辑 `tickers.json`。
-
-#### 添加流程
-
-```
-用户输入 Ticker → 点击"验证" → yfinance 三层验证 → 显示元数据（名称/板块/价格）
-                                                          ↓
-                              点击"添加到观察列表" → 写入 watchlist 表
-                                                          ↓
-                              run_single_ticker_pipeline() → 拉取价格 + 跑全部策略
-                                                          ↓
-                                                   页面自动刷新 → 展示完整数据
-```
-
-**特殊情况处理**：
-- **已存在且启用** → 提示已在列表中，阻止重复添加
-- **曾被移除（enabled=0）** → 提示可恢复，恢复后复用已有数据或重新拉取
-- **全新 Ticker** → 完整验证 + 管道执行
-
-#### 删除方式
-
-**软删除**（`enabled=0`），不物理删除任何数据。后续可通过"添加"操作恢复显示。
-
-### API 端点
-
-| 端点 | 说明 |
-|------|------|
-| `GET /api/tickers/check/{symbol}` | **Phase 5** 验证 ticker（三层验证 + 已存在检查） |
-| `POST /api/tickers` | **Phase 5** 新增 ticker（验证 → 写入 watchlist → 运行策略管道） |
-| `DELETE /api/tickers/{symbol}` | **Phase 5** 软删除 ticker（设 `enabled=0`，不删数据） |
-| `GET /api/dashboard` | Dashboard 全量数据 JSON |
-| `GET /api/market-pulse/latest` | 最新 Market Pulse |
-| `GET /api/market-pulse/history?days=30` | Market Pulse 历史走势 |
-| `GET /api/signals/recent?limit=20` | 近期信号变化 |
-| `GET /api/ticker/{symbol}` | 个股策略数据 |
-| `GET /api/ticker/{symbol}/history?strategy=stage2&days=30` | 个股策略历史 |
-| `POST /api/prices/refresh` | **Phase 5** 全量刷新价格（SSE 流式进度推送） |
-
-### 技术栈
-
-| 组件 | 选型 | 说明 |
-|------|------|------|
-| 后端 | FastAPI + Uvicorn | 高性能 ASGI 框架 |
-| 模板 | Jinja2 SSR | 服务端渲染，复用 Phase 3 能力 |
-| 样式 | 手写 CSS（深色主题） | 金融工具标配，护眼 |
-| 图表 | Chart.js (CDN) | 轻量折线图 |
-| 交互 | Vanilla JS | 客户端表格排序/筛选 + Ticker 管理（Modal + Fetch API） |
-| 国际化 | JSON 语言包 + i18n 引擎 | 中/英双语，Cookie 持久化，fallback 链 |
-| 数据管道 | lib/pipeline.py | 单 Ticker 验证 + 拉取 + 策略分析 + 自动 Market Pulse（Phase 5） |
-| 推送引擎 | lib/notifier.py | Telegram Bot API 封装（自动分段/重试/幂等/降级）（Phase 7） |
-| 调度器 | scripts/daily_pipeline.py | 三阶段 Pipeline（数据采集 → 策略计算 → Telegram 推送）（Phase 7） |
-
-### Web 目录结构
-
-```
-web/
-├── __init__.py
-├── app.py                    # FastAPI 主入口
-├── deps.py                   # Jinja2 模板引擎 + 自定义过滤器 + i18n 上下文注入
-├── routes/
-│   ├── __init__.py
-│   ├── dashboard.py          # Dashboard 首页路由（含 fallback 查询）
-│   ├── watchlist.py          # Watchlist 列表路由（含 fallback 查询）
-│   ├── ticker.py             # Ticker Detail 详情路由（含技术分析 + fallback 查询）
-│   └── api.py                # JSON API（含 Ticker 管理 CRUD + SSE 刷新 + fallback 查询）
-├── templates/
-│   ├── base.html             # 基础布局（导航 + 语言切换 + 页脚 + Modal Overlay）
-│   ├── dashboard.html        # Dashboard 页面（四策略信号摘要）
-│   ├── watchlist.html        # Watchlist 页面（含添加 Ticker 弹窗 + 移除按钮）
-│   └── ticker_detail.html    # Ticker Detail 页面（四策略卡片 + 四标签技术分析）
-├── static/
-│   ├── css/style.css         # 深色主题样式（含 Modal + 验证状态 + 标签面板样式）
-│   └── js/main.js            # 表格排序/筛选 + Ticker 管理 + i18n 翻译函数
-└── i18n/
-    ├── __init__.py
-    ├── core.py               # i18n 引擎（语言包加载/翻译查找/语言检测/翻译工厂）
-    └── locales/
-        ├── en.json           # 英文语言包（~220 个翻译键）
-        └── zh.json           # 中文语言包（~220 个翻译键）
-```
+The frontend can be reorganized independently as long as it continues to consume the backend through these stable data and pipeline boundaries.
