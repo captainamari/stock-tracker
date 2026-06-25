@@ -88,7 +88,7 @@
       "symbol": "CVX",
       "name": "Chevron",
       "sector": "Energy",
-      "enabled": true
+      "enabled": false
     },
     {
       "symbol": "EWY",
@@ -100,7 +100,7 @@
       "symbol": "GLUE",
       "name": "Monte Rosa Therapeutics",
       "sector": "Biotech",
-      "enabled": true
+      "enabled": false
     },
     {
       "symbol": "INTC",
@@ -135,6 +135,12 @@
     {
       "symbol": "NBIS",
       "name": "Nebius Group",
+      "sector": "AI Infrastructure",
+      "enabled": true
+    },
+    {
+      "symbol": "CRWV",
+      "name": "CoreWeaver",
       "sector": "AI Infrastructure",
       "enabled": true
     },
@@ -214,6 +220,24 @@
       "symbol": "AAOI",
       "name": "Applied Optoelectronics",
       "sector": "Fiber Optics",
+      "enabled": true
+    },
+    {
+      "symbol":"SIVE.ST",
+      "name":"Sivers Semiconductors AB",
+      "sector":"Silicon Photonics",
+      "enabled": true
+    },
+    {
+      "symbol":"GLW",
+      "name":"Corning Incorporated",
+      "sector":"Electronics Manufacturing",
+      "enabled": true
+    },
+    {
+      "symbol":"NOK",
+      "name":"Nokia Oyj",
+      "sector":"Network Infrastructure",
       "enabled": true
     }
   ],
