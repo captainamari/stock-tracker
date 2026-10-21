@@ -508,6 +508,8 @@ def parse_args():
 
 
 def main():
+    raise SystemExit('Legacy standalone execution is disabled. Use the admin Update data action or python -m lib.cli scheduler; run python -m lib.cli worker separately. See DEPLOY.md.')
+
     args = parse_args()
     log("开始执行 Stage 2 分析...")
 

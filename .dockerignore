@@ -21,6 +21,10 @@ env/
 *~
 
 # Git
+.env
+.env.*
+!.env.example
+*.db-shm
 .git/
 .gitignore
 

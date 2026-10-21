@@ -12,3 +12,13 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
       - run: python -m compileall -q lib web scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check web/static/js/main.js
+      - uses: actions/checkout@v4
+        with:
+          repository: captainamari/notification-hub
+          ref: 7c6ef039047e9adae7c6ca14d4e32204f352957c
+          path: .contract-hub
+      - run: python -m scripts.verify_hub_contract --checkout .contract-hub

@@ -1,41 +1,33 @@
-# ============================================================
-# Stock Tracker — Docker Compose
-# ============================================================
-# 用法:
-#   docker compose up -d          # 启动
-#   docker compose down            # 停止
-#   docker compose logs -f         # 查看日志
-#   docker compose up -d --build   # 重新构建并启动
-# ============================================================
+x-runtime: &runtime
+  build: .
+  restart: unless-stopped
+  env_file: .env
+  volumes:
+    - stock-data:/app/data
+    - stock-logs:/app/logs
 
 services:
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: stock-tracker
-    restart: unless-stopped
+    <<: *runtime
     ports:
-      - "8000:8000"
-    volumes:
-      # 持久化数据库和日志（容器重建后数据不丢失）
-      - stock-data:/app/data
-      - stock-logs:/app/logs
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8000
-      # Telegram notification (Phase 7)
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - '127.0.0.1:8000:8000'
+    command: ['uvicorn', 'web.app:app', '--host', '0.0.0.0', '--port', '8000']
+  worker:
+    <<: *runtime
+    command: ['python', '-m', 'lib.cli', 'worker']
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+      disable: true
+  scheduler:
+    <<: *runtime
+    command: ['python', '-m', 'lib.cli', 'scheduler']
+    healthcheck:
+      disable: true
+  notify-worker:
+    <<: *runtime
+    command: ['python', '-m', 'lib.cli', 'notify-worker']
+    healthcheck:
+      disable: true
 
 volumes:
   stock-data:
-    driver: local
   stock-logs:
-    driver: local

@@ -32,7 +32,7 @@ def test_privacy_and_language_isolation(client):
     update()
     assert 'SECRET' not in client.get('/api/dashboard').text
     assert client.get('/api/ticker/SECRET').status_code==404
-    for path in ('/api/runs/anything',):
+    for path in ('/api/settings','/api/notifications','/api/runs/anything'):
         assert client.get(path).status_code==401
     assert 'notification-settings' not in client.get('/admin').text
     def read(lang):

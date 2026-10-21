@@ -1,0 +1,136 @@
+{
+  "kind": "REAL yfinance collection, no provider substitution",
+  "batch_id": "c4b72f44a99842ba90be70036da53c28",
+  "target_date": "2026-10-20",
+  "assets": [
+    {
+      "symbol": "AAPL",
+      "status": "ok",
+      "actual_date": "2026-10-20",
+      "price": 339.5,
+      "missing_count": 0
+    },
+    {
+      "symbol": "IWM",
+      "status": "ok",
+      "actual_date": "2026-10-20",
+      "price": 275.7799987792969,
+      "missing_count": 0
+    },
+    {
+      "symbol": "MSFT",
+      "status": "ok",
+      "actual_date": "2026-10-20",
+      "price": 531.8699951171875,
+      "missing_count": 0
+    },
+    {
+      "symbol": "QQQ",
+      "status": "ok",
+      "actual_date": "2026-10-20",
+      "price": 717.6300048828125,
+      "missing_count": 0
+    },
+    {
+      "symbol": "SPY",
+      "status": "ok",
+      "actual_date": "2026-10-20",
+      "price": 769.0499877929688,
+      "missing_count": 0
+    },
+    {
+      "symbol": "VIX",
+      "status": "ok",
+      "actual_date": "2026-10-20",
+      "price": 17.309999465942383,
+      "missing_count": 0
+    }
+  ],
+  "history": [
+    {
+      "symbol": "AAPL",
+      "source": "yfinance",
+      "basis": "yfinance_auto_adjust_ohlc_native_volume_v1",
+      "bars": 550,
+      "first_date": "2024-08-12",
+      "last_date": "2026-10-20"
+    },
+    {
+      "symbol": "IWM",
+      "source": "yfinance",
+      "basis": "yfinance_auto_adjust_ohlc_native_volume_v1",
+      "bars": 550,
+      "first_date": "2024-08-12",
+      "last_date": "2026-10-20"
+    },
+    {
+      "symbol": "MSFT",
+      "source": "yfinance",
+      "basis": "yfinance_auto_adjust_ohlc_native_volume_v1",
+      "bars": 550,
+      "first_date": "2024-08-12",
+      "last_date": "2026-10-20"
+    },
+    {
+      "symbol": "QQQ",
+      "source": "yfinance",
+      "basis": "yfinance_auto_adjust_ohlc_native_volume_v1",
+      "bars": 550,
+      "first_date": "2024-08-12",
+      "last_date": "2026-10-20"
+    },
+    {
+      "symbol": "SPY",
+      "source": "yfinance",
+      "basis": "yfinance_auto_adjust_ohlc_native_volume_v1",
+      "bars": 550,
+      "first_date": "2024-08-12",
+      "last_date": "2026-10-20"
+    },
+    {
+      "symbol": "VIX",
+      "source": "yfinance",
+      "basis": "yfinance_auto_adjust_ohlc_native_volume_v1",
+      "bars": 550,
+      "first_date": "2024-08-12",
+      "last_date": "2026-10-20"
+    }
+  ],
+  "strategy_status_counts": [
+    {
+      "strategy_id": "bottom_fisher_us",
+      "status": "ok",
+      "count": 6
+    },
+    {
+      "strategy_id": "checklist_us",
+      "status": "ok",
+      "count": 6
+    },
+    {
+      "strategy_id": "contraction_us",
+      "status": "ok",
+      "count": 6
+    },
+    {
+      "strategy_id": "stage2_us",
+      "status": "ok",
+      "count": 6
+    },
+    {
+      "strategy_id": "technical",
+      "status": "ok",
+      "count": 6
+    }
+  ],
+  "candidate_counts": {
+    "stage2_us": 2,
+    "contraction_us": 2,
+    "bottom_fisher_us": 0,
+    "checklist_us": 2
+  },
+  "report_frozen": true,
+  "backup_restore": "passed in isolated copy",
+  "actual_notifications": 0,
+  "browser_closed_during_run": true
+}
