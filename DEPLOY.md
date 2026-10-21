@@ -66,3 +66,24 @@ python -m scripts.verify_hub_contract --checkout ../notification-hub
 - 实地观察纽约 04:00 / 06:00、假日/DST 的计划记录、最新行情日期和缺失告警。
 - 经用户另行授权，用真实 hub 凭据验证真实 Telegram/Email 收件与超时人工核对流程。
 - 对照已验证备份执行回滚演练，记录实际版本、路径、监控及恢复耗时。
+
+
+## Yahoo 请求控制与真实数据复用
+
+默认每次 yfinance history 调用至少间隔 5 秒，顺序采集，已有历史仅检查 45 天重叠区间；缺失、复权变化才扩展为 800 天窗口。单次 history 可能发出多个 HTTP 请求，所以这不是 Yahoo 官方配额。遇到 YFRateLimitError / HTTP 429，立即停止整个任务，保留上次发布，数据库持久化暂停 6 小时；重启或重复点击不能绕过。暂停期间尝试任务会失败但不访问来源；到期后由下一次定时或手动更新再试，不自动循环重试。其他错误最多三次，退避 10/30 秒。管理页任务进度显示暂停截止时间。环境变量 YAHOO_MIN_INTERVAL_SECONDS / YAHOO_COOLDOWN_SECONDS 可调。无法保证 Yahoo 不限制 VPS IP；请先验收小观察池，观察日期、失败原因与请求频率。
+
+5,004 个资产在默认间隔下仅请求启动间隔就需约 6 小时 57 分钟，另加下载和计算，无法用合成容量结果证明 04:00 开始会在 06:00 前完成。需按真实观察池大小调整计划并实测；通知到时缺报告仍使用明确缺失摘要。
+
+git pull **只拉代码，不含数据库**。容量测试的 126 万行全部是隔离合成数据，不能部署为行情。真实验证库只有六个资产的 3,300 行，可通过 SQLite backup API 的一致副本单独传输，节省首次历史下载。
+
+新安装可将经校验的真实备份上传到独立位置，然后恢复到不存在的目标（以下路径为示例；已有 VPS 必须保留原数据库并走上文迁移步骤）：
+
+~~~sh
+sha256sum /safe/real-market-bootstrap-2026-10-20.db
+python -m lib.cli restore /safe/real-market-bootstrap-2026-10-20.db /new/stock-data/stock_tracker.db
+export STOCK_DB=/new/stock-data/stock_tracker.db
+python -m lib.cli init
+python -m lib.cli init-admin
+~~~
+
+Docker 部署必须把恢复后的库放入实际 stock-data 挂载卷，单纯上传到仓库目录不会被容器读取。生产 PUBLIC_URL、TLS cookie 和 hub 配置单独设置，四进程指向同一库。交付的真实 bootstrap 已去除临时账号、会话、登录尝试、通知配置和投递记录，通知默认关闭；旧日报的冻结 localhost 链接保留来源，不伪改历史。恢复后先检查六资产行情、日期、详情和日报，再决定更新。不得用这个小样本库覆盖已有 VPS 配置或历史。以上仅为后续 S5 操作说明，本次没有连接或修改 VPS。

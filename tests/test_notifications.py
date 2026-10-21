@@ -110,3 +110,14 @@ def test_partial_delivery_never_retries(database):
     with pytest.raises(ValueError):
         delivery.retry(identifier)
     assert delivery.run_once(Partial()) is None
+
+
+def test_malformed_success_receipts_are_unknown(monkeypatch):
+    monkeypatch.setenv('NOTIFICATION_API_URL','http://isolated.invalid')
+    monkeypatch.setenv('NOTIFICATION_API_TOKEN','synthetic-contract-token')
+    item=dict(target_date='2026-10-20',channel='trading',report_id='isolated')
+    part=dict(part=1,body='SYNTHETIC')
+    for payload in ([],None,'sent',{'status':'sent','request_id':'','channel':'trading','delivered_to':['telegram']},
+                    {'status':'sent','request_id':'receipt','channel':'trading','delivered_to':[None]}):
+        with httpx.Client(transport=httpx.MockTransport(lambda request:httpx.Response(200,json=payload))) as client:
+            assert delivery.HubClient(client).send(item,part,1)[0]=='unknown'

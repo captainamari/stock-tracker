@@ -13,16 +13,19 @@ from lib import db
 from lib.jobs import fence
 from lib.market_calendar import sessions
 from lib.settings import settings, stamp
+from lib import provider_guard
 
 BASIS = 'yfinance_auto_adjust_ohlc_native_volume_v1'
 
 
 def download(symbol, start, target):
     import yfinance as yf
+    from yfinance.exceptions import YFRateLimitError
     # Keep the library's cookie/timezone cache inside the configured data directory.
     yf.set_tz_cache_location(str(settings().database.parent / 'yfinance-cache'))
     last_error = None
     for attempt in range(3):
+        provider_guard.before_call()
         try:
             data = yf.Ticker(symbol).history(start=start, end=str(date.fromisoformat(target)+timedelta(days=1)),
                 interval='1d', auto_adjust=True, back_adjust=False, repair=False, actions=True,
@@ -31,9 +34,12 @@ def download(symbol, start, target):
                 raise ValueError('Source returned no daily bars')
             return data
         except Exception as exc:
+            if isinstance(exc, YFRateLimitError) or getattr(getattr(exc, 'response', None), 'status_code', None) == 429:
+                provider_guard.rate_limited()
+                raise provider_guard.YahooCooldownActive('Yahoo rate limited; run stopped and requests paused') from exc
             last_error = exc
             if attempt < 2:
-                time.sleep(2 ** attempt)
+                time.sleep(10 * 3 ** attempt)
     raise RuntimeError(f'yfinance download failed: {type(last_error).__name__}') from last_error
 
 
@@ -155,3 +161,5 @@ def collect_asset(job, asset, provider=download):
             actual = next((r['date'] for r in reversed(old) if r['quality']=='valid'), None)
             conn.execute("UPDATE run_assets SET status='failed',reason=?,actual_date=?,input_revision=? WHERE run_id=? AND symbol=?",
                          (f'source_failed:{type(exc).__name__}', actual, watermark, job['run_id'], asset['symbol']))
+        if isinstance(exc, provider_guard.YahooCooldownActive):
+            raise  # Stop this batch, preserve the last publication, do not try more symbols.

@@ -8,7 +8,7 @@ Baseline: latest fetched `origin/main` = `b35ab1ddf68924efd581c3258992d43edea65d
 - **S1 complete:** database configuration authority, strict configuration-only API, closed XNYS sessions, explicit yfinance adjusted basis, immutable source revisions, singleton durable jobs, lease fencing, independent worker. Both allowed triggers use `request_update`; GET performs no source call or calculation.
 - **S2 complete:** fixed Stage2 missing benchmark/20-session boundary/aligned dates, run-scoped input loader, complete condition denominators, ordered evaluations, failed versus successful exits, preserved entry dates, atomic results/pointer/report publication. Zero remains zero; old report inputs remain pinned. Rule IDs are `stage2_us`, `contraction_us`, `bottom_fisher_us`, `checklist_us`, version `v1`.
 - **S3 complete:** functional bilingual warm UI; database prices independent of matches, precomputed technical details, saved conditions, CSV, private/admin boundaries, add/disable/update/progress. Browser at 360 and 1440 pixels, including real and isolated fault data.
-- **S4 complete implementation:** independent New York schedule, immutable reports and segmented durable delivery outbox, actual notification-hub adapter/receipt validation, conservative unknown/partial handling, settings/test/status controls, separate startup processes. Final capacity run and remote CI evidence are being completed below.
+- **S4 complete implementation:** independent New York schedule, immutable reports and segmented durable delivery outbox, actual notification-hub adapter/receipt validation, conservative unknown/partial handling, settings/test/status controls, separate startup processes. Capacity, real-source, browser and local regression evidence are complete below; production S5 remains unexecuted.
 
 Market Lab style reference read at `c13f613a670301962003f75ee2da77ae550bd761`; only palette/type/layout adopted. Stack retained. Existing strategy thresholds retained. Checklist weekly data remains **provisional**, explicitly labeled. Old collection/strategy CLIs and deployment/cron scripts now fail with the replacement instructions; there is no competing direct Telegram schedule. Old CSVs/databases/history were not deleted.
 
@@ -45,10 +45,10 @@ Review's five offline findings have repository regressions: holiday (`test_calen
 Windows 11 build 26200; Python 3.12.14; 4 logical CPUs; ~15.95 GiB RAM. Runtime versions pinned in requirements. Tests use distinct disposable databases under `work/`, never the real preview database. Local tests include Starlette's deprecation warning for its httpx TestClient; no test was skipped or assertions relaxed.
 
 ```text
-python -m pytest -q --basetemp=../test-temp-08
-# 32 passed, 1 warning, 77.71 s
-python -m pytest tests/test_strategies.py::test_twenty_elapsed_sessions_and_benchmark_date_alignment -q --basetemp=../test-temp-09
-# 1 passed, 1.82 s (added boundary-specific regression)
+python -m pytest -q --basetemp=../test-temp-15
+# 38 passed, 1 warning, 43.87 s; publication rollback/concurrent reads, malformed receipts, provider cooldown
+python -m pytest tests/test_provider_guard.py -vv -s --basetemp=../test-temp-16
+# 2 passed, 2.99 s
 node --check web/static/js/main.js
 python -m compileall -q lib web scripts
 python -m scripts.verify_hub_contract --checkout ../notification-hub
@@ -61,13 +61,33 @@ Real run `c4b72f44a99842ba90be70036da53c28`: triggered by administrator browser 
 
 Browser: actual Uvicorn on loopback. Real data `/` /watchlist /ticker/AAPL /admin; separate isolated synthetic host/database for missing/stale/short/private rows. 360px detail document width 345px with 281px chart; no horizontal overflow or JS errors after fixes. Initial browser verification found a JS syntax error and default GET login form; both fixed, POST fallback and JS syntax CI added. Process kill test initially terminated only the Windows venv launcher; now kills the actual worker PID and passes. Screenshots in `evidence/` distinguish real and synthetic validation.
 
-## Remaining evidence and limits
+## Capacity, provider safeguards and limits
 
-- Capacity: final 5,000-stock run in progress; final measured database size/time/RSS/HTTP latency/lock results will replace this line. An initial exploratory run was interrupted to improve last-connection WAL checkpoint overhead; it is not claimed as completed capacity acceptance.
-- Remote CI / Draft PR: publishing through the connected GitHub API because local Git credential helper fails under the Windows sandbox. The final remote commit and CI result will be recorded after publication.
-- No thousands-symbol live Yahoo test, production Docker/VPS execution, real Telegram/Email send, or production recovery drill is claimed. Synthetic capacity is not a full-market network benchmark.
+- Capacity completed: 5,000 synthetic stocks + four benchmarks × 252 sessions = **1,261,008 bars**, 25,020 successful results, one atomic publication. **1,884.08 s (31m24s)**, **753.46 MiB** database, **134.72 MiB** peak sampled RSS. During update, 720 HTTP reads: p95 **0.998 s**, max **1.424 s**, zero HTTP/lock errors. Published dashboard/detail/watchlist HTTP: 1.339 / 0.114 / 1.898 s. Independent integrity check and all 5,004 asset / 25,020 result statuses passed. RSS was periodically sampled, not absolute OS peak; host also ran other verification. See evidence/capacity-validation.json. An initial exploratory run was interrupted to improve WAL checkpoint overhead and is not counted.
+- Draft PR [#2](https://github.com/captainamari/stock-tracker/pull/2), branch codex/daily-use-s1-s4. Earlier complete code at 6a980caa passed [remote CI](https://github.com/captainamari/stock-tracker/actions/runs/39597124750) (33 tests + compile + JS syntax + actual hub contract). Final follow-up adds five tests and the provider guard; the final SHA-specific CI status is tracked on this same Draft PR. Publishing uses the connected GitHub API because the local Windows Git credential helper is unavailable; every uploaded tree SHA is verified against its local commit.
+- Docker Compose configuration validated; Docker daemon was unavailable, so image build/container runtime remain unverified. No thousands-symbol live Yahoo test, production Docker/VPS execution, real Telegram/Email send, or production recovery drill is claimed. Synthetic capacity is not a full-market network benchmark. At the default five seconds between history calls, 5,004 assets alone take at least about 6h57m, excluding network, retries and calculation; the synthetic result does not establish completion before 06:00.
 - Hub cannot prove remote exactly-once or query an uncertain receipt; the app surfaces that limitation instead of retrying blindly.
 
 Startup and manual acceptance: follow README/DEPLOY, initialize admin, start web/worker/scheduler/notify-worker with one DB, add symbols, Update data, reopen progress, inspect same-date report/CSV; save notification settings without sending. Test send requires intentional action and real credentials only after separate authorization.
 
 S5 checklist (not executed): production backup+isolated restore, confirm volume/path/TLS/cookies, disable old cron/direct Telegram, start four processes, verify real NY 04:00/06:00 and DST/holiday behavior, authorize real channel receipt test, monitor locks/disk/leases, and run rollback drill. See DEPLOY.md for exact operational steps.
+
+
+## Yahoo request policy and reusable real data
+
+The unified worker makes sequential history calls, reuses stored history, and rechecks a 45-day overlap (800-day window for missing history or source revisions). Migration 005 persists pacing across processes: five seconds minimum between history-call starts. One yfinance call may issue multiple HTTP requests, so this is not an HTTP quota guarantee. Rate-limit exceptions / HTTP 429 stop the entire run without trying remaining assets or replacing the published batch, and persist a six-hour cooldown. Failed runs remain inspectable; manual attempts during cooldown make no source calls. No automatic retry at cooldown expiry; the next explicit or scheduled update can try again. Other failures have at most three attempts with 10/30-second backoff. The admin progress message shows the pause deadline. Both intervals are configured in .env.example, with conservative lower bounds. Tests verify one network call on rate limiting, restart persistence, expiry and lock-free pacing waits. These are precautions, not proof that Yahoo cannot restrict a VPS IP. Reference: [yfinance rate-limit exception](https://github.com/ranaroussi/yfinance/blob/main/yfinance/exceptions.py).
+
+The 1.26 million capacity bars are **synthetic and never deployment data**. Only the separate 3,300 real bars are reusable. SQLite databases are excluded from Git; git pull transfers code only. A separately delivered 2,023,424-byte real bootstrap backup has been restored and integrity-checked, with temporary admin/session/login/notification state removed from the new copy. SHA-256: 5dec3fc72657ab4eb0c936ad6a05422f97c04bcb7d52ae28afd6afe3f10d8144. It contains only AAPL/MSFT/SPY/QQQ/IWM/^VIX through 2026-10-20, 30 saved results and one publication. It is for a fresh installation, never a replacement for an existing VPS database. Frozen report links retain their original localhost URL; future reports use production PUBLIC_URL. Notifications default disabled and a new administrator must be initialized.
+
+## Stage commits
+
+| Stage | Published commit |
+|---|---|
+| S0 | 82162ab5ac81615013da549f417f00cc0ab0b6be |
+| S1 | 545bc57a2040c07c0120845216fd02c786f2f16d |
+| S2 | a78f96de4a64fa5aa6286fb702e6267c7af1fd29 |
+| S3 | 11eb915e82fdbfa159e00545547979724bf0a2ff |
+| S4 | 0b2b10cfa558be44a21833450f05575bc672442b |
+| Recovery/source validation | 6a980caa1c43ca83c0832a73f8d94bfb9e7bc126 |
+
+Final follow-up and its evidence are included in the same PR; no main merge or production cutover was performed.

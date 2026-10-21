@@ -48,6 +48,7 @@ docker-compose.yml
 # Docs
 *.md
 !README.md
+!web/static/js/Chart.LICENSE.md
 
 # Reports (generated at runtime)
 reports/

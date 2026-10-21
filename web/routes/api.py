@@ -73,6 +73,8 @@ def run_status(request: Request, run_id: str):
     result = get_run(run_id)
     if not result:
         raise HTTPException(404)
+    from lib.provider_guard import status
+    result['provider'] = status()
     return result
 
 

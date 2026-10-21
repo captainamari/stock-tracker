@@ -54,3 +54,5 @@ python -m scripts.capacity_check --database /new/path/synthetic.db --output /new
 容量工具只接受新数据库，使用明确标记的合成 5,000 股 × 252 日线，执行真实采集规范化、计算、存储、发布和并发网页读取；不是全市场真实采集证明。hub 契约测试见 [DEPLOY.md](DEPLOY.md)。旧独立采集、策略 CLI、直接 Telegram 调度及自动部署脚本已停用，避免重复写入/推送；算法函数保留供统一计算调用。
 
 S5 的生产 VPS 切换、真实渠道投递、线上备份恢复演练尚未执行。详细限制与逐项 A01–A19 证据见验收记录。
+
+Yahoo 请求默认顺序执行、每次 history 调用间隔至少 5 秒；限流时整个任务停止，持久化暂停 6 小时并保留上次发布。无法保证 VPS IP 不受 Yahoo 限制。环境变量见 .env.example。git pull 不包含 SQLite 数据；126 万容量测试行是合成数据，只有单独的 3,300 行真实行情可通过备份供新安装复用，不能覆盖已有 VPS 库，步骤见 DEPLOY.md。

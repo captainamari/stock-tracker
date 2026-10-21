@@ -27,6 +27,8 @@ class Settings:
     history_days: int = 800
     revision_lookback_days: int = 45
     lease_seconds: int = 90
+    yahoo_min_interval_seconds: float = field(default_factory=lambda: float(os.getenv('YAHOO_MIN_INTERVAL_SECONDS', '5')))
+    yahoo_cooldown_seconds: int = field(default_factory=lambda: int(os.getenv('YAHOO_COOLDOWN_SECONDS', '21600')))
     secure_cookies: bool = field(default_factory=lambda: os.getenv('COOKIE_SECURE', 'true').lower() == 'true')
     public_url: str = field(default_factory=lambda: os.getenv('PUBLIC_URL', 'http://127.0.0.1:8000').rstrip('/'))
     hub_url: str = field(default_factory=lambda: os.getenv('NOTIFICATION_API_URL', '').rstrip('/'))
@@ -34,6 +36,8 @@ class Settings:
 
     def __post_init__(self):
         ZoneInfo(self.display_timezone)
+        if not 1 <= self.yahoo_min_interval_seconds <= 3600 or self.yahoo_cooldown_seconds < 3600:
+            raise ValueError('Yahoo pacing must be 1..3600 seconds; cooldown at least 3600 seconds')
 
 
 def settings():

@@ -43,6 +43,7 @@ def test_database_authority_and_pending_add(admin):
     assert admin.post('/api/tickers', json={'symbol':'NEW','yf_ticker':'NEW-A','is_public':True}).status_code == 200
     assert db.get_price_count('NEW') == 0
     admin.delete('/api/tickers/NEW')
+    assert datetime.fromisoformat(db.get_watchlist_item('NEW')['updated_at']).utcoffset().total_seconds()==0
     sync_watchlist({'monitored':[{'symbol':'NEW','name':'Overwrite','enabled':True}]})
     assert not db.get_watchlist_item('NEW')['enabled']
     admin.post('/api/tickers', json={'symbol':'NEW','yf_ticker':'NEW-A'})

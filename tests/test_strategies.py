@@ -146,6 +146,7 @@ def test_price_basis_never_falls_back(monkeypatch):
             raise RuntimeError('failure')
     monkeypatch.setattr(yfinance,'Ticker',lambda _:Broken())
     monkeypatch.setattr('lib.prices.time.sleep',lambda _:None)
+    monkeypatch.setattr('lib.provider_guard.before_call',lambda:None)
     with pytest.raises(RuntimeError):
         download('AAA','2025-01-01','2026-10-20')
     assert len(calls)==3 and all(c['auto_adjust'] is True for c in calls)

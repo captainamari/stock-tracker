@@ -80,7 +80,10 @@ class HubClient:
             if response.status_code!=200:
                 return 'unknown',None,f'hub_response_{response.status_code}'
             result=response.json()
-            if not isinstance(result.get('request_id'),str) or result.get('channel')!=delivery['channel'] or not isinstance(result.get('delivered_to'),list):
+            if not isinstance(result,dict):
+                return 'unknown',None,'invalid_receipt'
+            recipients=result.get('delivered_to')
+            if not isinstance(result.get('request_id'),str) or not result['request_id'] or result.get('channel')!=delivery['channel'] or not isinstance(recipients,list) or not recipients or not all(isinstance(p,str) and p for p in recipients):
                 return 'unknown',None,'invalid_receipt'
             if result.get('status')=='sent' and result['delivered_to'] and not result.get('failed') and not result.get('skipped'):
                 return 'sent',result,None

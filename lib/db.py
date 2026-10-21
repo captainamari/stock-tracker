@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import io
+from lib.settings import stamp
 from datetime import datetime, date
 from pathlib import Path
 from contextlib import contextmanager
@@ -270,7 +271,7 @@ def init_db(db_path: Optional[Path] = None):
         # 记录数据库版本
         conn.execute(
             "INSERT OR REPLACE INTO db_meta (key, value, updated_at) VALUES (?, ?, ?)",
-            ("version", DB_VERSION, datetime.now().isoformat())
+            ("version", DB_VERSION, stamp())
         )
     print(f"✅ 数据库已初始化: {db_path or DB_PATH}")
 
@@ -303,7 +304,7 @@ def upsert_watchlist(symbols: List[Dict[str, Any]], db_path: Optional[Path] = No
                 s.get('source_type', 'monitored'),
                 s.get('yf_ticker'),
                 1 if s.get('enabled', True) else 0,
-                datetime.now().isoformat(),
+                stamp(),
             ))
 
 
@@ -342,7 +343,7 @@ def set_ticker_enabled(symbol: str, enabled: bool, db_path: Optional[Path] = Non
     with get_db(db_path) as conn:
         conn.execute(
             "UPDATE watchlist SET enabled = ?, updated_at = ? WHERE symbol = ?",
-            (1 if enabled else 0, datetime.now().isoformat(), symbol)
+            (1 if enabled else 0, stamp(), symbol)
         )
 
 
@@ -601,7 +602,7 @@ def upsert_strategy_state(
             1 if is_active else 0,
             entry_date, entry_price,
             _json_dumps(extra or {}),
-            datetime.now().isoformat(),
+            stamp(),
         ))
 
 
@@ -631,7 +632,7 @@ def upsert_strategy_states_batch(states: List[Dict], strategy: str,
                 s.get('entry_date'),
                 s.get('entry_price'),
                 _json_dumps(s.get('extra', {})),
-                datetime.now().isoformat(),
+                stamp(),
             )
             for s in states
         ])

@@ -1,0 +1,39 @@
+{
+  "kind": "SYNTHETIC, no live provider verification",
+  "stocks": 5000,
+  "bars_per_asset": 252,
+  "seconds": 1884.0767660999554,
+  "peak_sampled_rss_mb": 134.72265625,
+  "database_mb": 753.45703125,
+  "concurrent_http_reads": 720,
+  "read_p95_seconds": 0.9981035999953747,
+  "read_max_seconds": 1.424113099987153,
+  "read_errors": [],
+  "counts": {
+    "price_revisions": 1261008,
+    "daily_results": 25020,
+    "publications": 1
+  },
+  "queries": {
+    "dashboard_seconds": 1.3393624000018463,
+    "detail_seconds": 0.11350739997578785,
+    "published_watchlist_http_seconds": 1.8977260999963619
+  },
+  "environment": {
+    "os": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.14",
+    "cpu_logical": 4,
+    "ram_gb": 15.95
+  },
+  "integrity_check": "ok",
+  "asset_status_counts": {
+    "ok": 5004
+  },
+  "result_status_counts": {
+    "ok": 25020
+  },
+  "run_status_counts": {
+    "published": 1
+  },
+  "units_note": "database_mb and peak_sampled_rss_mb are MiB; RSS sampled during concurrent reads, not absolute OS peak."
+}
