@@ -31,8 +31,9 @@ def dashboard_data(batch=None, private=False):
         if pub:
             assets = [dict(r) for r in conn.execute('SELECT * FROM run_assets WHERE run_id=? ORDER BY symbol',(pub['batch_id'],)) if permitted(conn,r['symbol'],r,private)]
             allowed = {a['symbol'] for a in assets}
+            stocks = {a['symbol'] for a in assets if a['role']=='stock'}
             results = [dict(r) for r in conn.execute('SELECT * FROM daily_results WHERE run_id=?',(pub['batch_id'],)) if r['symbol'] in allowed]
-            changes = [dict(r) for r in conn.execute('SELECT * FROM candidate_changes WHERE batch_id=?',(pub['batch_id'],)) if r['symbol'] in allowed]
+            changes = [dict(r) for r in conn.execute('SELECT * FROM candidate_changes WHERE batch_id=?',(pub['batch_id'],)) if r['symbol'] in stocks]
         by_symbol = {a['symbol']:a for a in assets}
         # Pending configurations remain visible independently of strategy matches.
         if batch is None:
@@ -63,7 +64,7 @@ def ticker_data(symbol,batch=None,private=False):
         current = conn.execute('SELECT * FROM watchlist WHERE symbol=?',(symbol,)).fetchone()
         if not (row or current) or not permitted(conn,symbol,row,private):
             return None
-        asset = dict(row) if row else dict(current)
+        asset = dict(row) if row else {**dict(current),'status':'pending','actual_date':None,'price':None,'change_1d':None,'role':'stock'}
         prices = read_prices(conn,symbol,pub['target_date'],row['input_revision'] or 0) if row else []
         results = {}
         if row:

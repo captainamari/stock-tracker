@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<div class="heading"><h1>{{t('Daily report','每日日报')}}</h1><p>{{target_date}} · {{local_time(created_at)}}</p></div><section class="panel"><p>{{t('This snapshot is frozen. Later source revisions create a new report.','此快照已冻结；后续来源修订会生成新报告。')}}</p><pre class="report">{{body}}</pre></section>{% endblock %}

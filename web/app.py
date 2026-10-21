@@ -22,7 +22,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 
-from web.routes import dashboard, watchlist, ticker, api
+from web.routes import dashboard, watchlist, ticker, api, admin
 from web.i18n import get_language_from_request, SUPPORTED_LANGUAGES
 from web.auth import router as auth_router, guard
 from lib.migrations import migrate
@@ -73,6 +73,8 @@ app.include_router(dashboard.router)
 app.include_router(watchlist.router)
 app.include_router(ticker.router)
 app.include_router(api.router, prefix="/api")
+app.include_router(admin.router)
+
 
 # ============================================================
 # CLI 入口
