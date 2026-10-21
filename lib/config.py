@@ -72,11 +72,13 @@ def parse_tickers(config: Dict) -> List[TickerInfo]:
     return tickers
 
 
-def sync_watchlist(config: Optional[Dict] = None, config_path: Optional[Path] = None):
+def sync_watchlist(config: Optional[Dict] = None, config_path: Optional[Path] = None, *, explicit=False):
     """
     将 tickers.json 同步到数据库 watchlist 表。
     幂等操作：存在则更新，不存在则插入。
     """
+    if get_watchlist(enabled_only=False) and not explicit:
+        return  # Database is authoritative after initialization.
     if config is None:
         config = load_config(config_path)
 
