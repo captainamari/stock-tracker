@@ -7,6 +7,9 @@ from lib.settings import stamp
 
 
 def execute(job, provider=download):
+    # Keep one idle connection for the run: closing the last SQLite connection
+    # forces a WAL checkpoint. This connection holds no transaction or lock.
+    keepalive = db.get_connection()
     stop = threading.Event()
     errors = []
     def pulse():
@@ -42,6 +45,7 @@ def execute(job, provider=download):
     finally:
         stop.set()
         thread.join(timeout=2)
+        keepalive.close()
 
 
 def run_once(provider=download):

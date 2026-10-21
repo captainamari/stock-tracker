@@ -16,6 +16,23 @@ def test_missing_benchmark_keeps_all_eight_conditions():
     assert r['status']=='insufficient_data'
 
 
+def test_twenty_elapsed_sessions_and_benchmark_date_alignment():
+    from scripts.stage2_monitor import check_stage2_conditions
+    data=bars('AAA').tail(252).copy()
+    data['Close']=100.
+    data.iloc[232,data.columns.get_loc('Close')]=200.
+    data.iloc[233:,data.columns.get_loc('Close')]=99.
+    spy=bars('SPY')
+    info=SimpleNamespace(symbol='AAA',name='SYNTHETIC',sector='')
+    result=check_stage2_conditions(info,loader=lambda symbol,min_rows=0:data if symbol=='AAA' else spy)
+    # 20 elapsed sessions rises, while the former 19-session boundary falls.
+    assert result['conditions']['C3']
+    missing=spy.drop(data.index[-50])
+    result=check_stage2_conditions(info,loader=lambda symbol,min_rows=0:data if symbol=='AAA' else missing)
+    assert result['conditions']['C8'] is None and result['total']==8
+    assert result['status']=='insufficient_data' and not result['is_stage2']
+
+
 def test_no_cross_run_cache(database):
     from scripts.stage2_monitor import fetch_stock_data
     db.upsert_prices('AAA',[dict(date='2026-10-19',open=2,high=2,low=2,close=2,volume=100)])
@@ -132,3 +149,55 @@ def test_price_basis_never_falls_back(monkeypatch):
     with pytest.raises(RuntimeError):
         download('AAA','2025-01-01','2026-10-20')
     assert len(calls)==3 and all(c['auto_adjust'] is True for c in calls)
+
+
+def test_leaving_stage2_pool_clears_vcp_via_real_chain(database,monkeypatch):
+    from lib import strategy_service
+    seed_watchlist()
+    monkeypatch.setattr(strategy_service,'analyze_vcp',lambda *args:dict(conditions={f'C{i}':True for i in range(1,7)},is_vcp=True))
+    first=update()
+    assert dashboard_data()['counts']['contraction_us']==1
+    def falling(symbol,start,target):
+        frame=bars(symbol,start,target)
+        if symbol=='AAA':
+            close=250-frame['Close']*.6
+            frame['Close']=close
+            frame['Open']=close-.2
+            frame['High']=close+1
+            frame['Low']=close-1
+        return frame
+    last=update(falling)
+    assert ticker_data('AAA')['strategies']['stage2_us']['status']=='ok'
+    assert dashboard_data()['counts']['stage2_us']==0
+    assert dashboard_data()['counts']['contraction_us']==0
+    with db.get_db() as conn:
+        assert conn.execute("SELECT active FROM candidate_states WHERE symbol='AAA' AND strategy_id='contraction_us'").fetchone()[0]==0
+        assert conn.execute("SELECT COUNT(*) FROM candidate_changes WHERE batch_id=? AND strategy_id='contraction_us' AND change_type='exit'",(last,)).fetchone()[0]==1
+    assert dashboard_data(first)['counts']['contraction_us']==1
+
+
+def test_market_date_cannot_move_backwards(database):
+    from datetime import datetime,timezone
+    seed_watchlist()
+    first=update()
+    with pytest.raises(ValueError,match='older market date'):
+        update(now=datetime(2026,10,20,8,tzinfo=timezone.utc))
+    assert dashboard_data()['batch_id']==first
+
+
+def test_full_csv_and_backup_preserve_published_inputs(client,tmp_path):
+    from lib.backup import backup,restore
+    import csv,io,sqlite3
+    seed_watchlist()
+    run=update()
+    data=ticker_data('AAA')
+    csv_rows=list(csv.DictReader(io.StringIO(client.get(f'/api/ticker/AAA/prices.csv?batch={run}').text)))
+    assert len(csv_rows)==len(data['prices'])>500
+    assert csv_rows[0]['date']==data['prices'][0]['date']
+    assert float(csv_rows[-1]['close'])==data['asset']['price']
+    saved=backup(tmp_path/'snapshot.db')
+    restored=restore(saved,tmp_path/'restored.db')
+    with sqlite3.connect(restored) as conn:
+        assert conn.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+        assert conn.execute('SELECT batch_id FROM current_publication').fetchone()[0]==run
+        assert conn.execute('SELECT COUNT(*) FROM daily_results').fetchone()[0]==25

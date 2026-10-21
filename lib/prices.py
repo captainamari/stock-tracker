@@ -79,6 +79,7 @@ def dataframe(rows):
 
 def collect_asset(job, asset, provider=download):
     cfg = settings()
+    source = 'yfinance' if provider is download else 'synthetic_test'
     target = job['target_date']
     with db.get_db() as conn:
         old = read_prices(conn, asset['symbol'], target)
@@ -112,10 +113,11 @@ def collect_asset(job, asset, provider=download):
         # Large unexplained adjusted jumps are retained as invalid observations.
         merged = {r['date']: r for r in old}
         merged.update({r['date']:r for r in rows})
+        incoming_dates = {r['date'] for r in rows}
         previous = None
         for day in sorted(merged):
             r = merged[day]
-            if r['close'] and previous and r in rows and (r['close']/previous > 2 or r['close']/previous < .5):
+            if r['close'] and previous and day in incoming_dates and (r['close']/previous > 2 or r['close']/previous < .5):
                 r['quality'] = 'anomalous_jump'
             if r['close']:
                 previous = r['close']
@@ -128,11 +130,11 @@ def collect_asset(job, asset, provider=download):
                 previous = old_by_date.get(row['date'])
                 if not previous or previous['fingerprint'] != fingerprint:
                     conn.execute('''INSERT INTO price_revisions(symbol,date,open,high,low,close,volume,source,basis,fetched_at,quality,fingerprint,run_id)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''', (asset['symbol'], row['date'], row['open'], row['high'], row['low'], row['close'], row['volume'], 'yfinance', BASIS, fetched, row['quality'], fingerprint, job['run_id']))
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''', (asset['symbol'], row['date'], row['open'], row['high'], row['low'], row['close'], row['volume'], source, BASIS, fetched, row['quality'], fingerprint, job['run_id']))
                 if row['close'] is not None:
                     conn.execute('''INSERT INTO stock_prices(symbol,date,open,high,low,close,volume,source,basis,fetched_at,quality) VALUES (?,?,?,?,?,?,?,?,?,?,?)
                         ON CONFLICT(symbol,date) DO UPDATE SET open=excluded.open,high=excluded.high,low=excluded.low,close=excluded.close,volume=excluded.volume,source=excluded.source,basis=excluded.basis,fetched_at=excluded.fetched_at,quality=excluded.quality''',
-                        (asset['symbol'], row['date'], row['open'], row['high'], row['low'], row['close'], row['volume'], 'yfinance', BASIS, fetched, row['quality']))
+                        (asset['symbol'], row['date'], row['open'], row['high'], row['low'], row['close'], row['volume'], source, BASIS, fetched, row['quality']))
             watermark = conn.execute('SELECT MAX(id) FROM price_revisions WHERE symbol=?', (asset['symbol'],)).fetchone()[0]
             stored = read_prices(conn, asset['symbol'], target, watermark)
             valid = [r for r in stored if r['quality']=='valid']

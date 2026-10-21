@@ -10,6 +10,8 @@ NOW = datetime(2026,10,21,8,tzinfo=timezone.utc)
 
 
 def test_calendar_boundaries():
+    from scripts.daily_pipeline import is_trading_day as legacy_calendar
+    assert not legacy_calendar(datetime(2026,12,25))
     assert not is_trading_day('2026-12-25')
     assert completed_session(datetime(2026,11,27,17,59,tzinfo=timezone.utc)) == '2026-11-25'
     assert completed_session(datetime(2026,11,27,18,1,tzinfo=timezone.utc)) == '2026-11-27'

@@ -41,7 +41,7 @@ def report_body(conn, batch, target, pulse):
     for a in assets:
         lines.append(f'{a["symbol"]}: {a["price"] if a["price"] is not None else "—"} · {a["actual_date"] or "missing"} · {a["status"]}')
     changes = conn.execute('''SELECT c.* FROM candidate_changes c JOIN run_assets a ON a.run_id=c.batch_id AND a.symbol=c.symbol
-        WHERE c.batch_id=? AND a.is_public=1''',(batch,)).fetchall()
+        WHERE c.batch_id=? AND a.is_public=1 AND a.role='stock' ''',(batch,)).fetchall()
     lines.append('状态变化 / Changes: '+('; '.join(f'{c["symbol"]} {names[c["strategy_id"]]} {c["change_type"]}' for c in changes) or '无 / None'))
     lines.extend(['周线条件含本周暂态 / Weekly Checklist includes the provisional week.', f'{settings().public_url}/?batch={batch}'])
     return '\n'.join(lines)
@@ -54,6 +54,9 @@ def publish(job):
     with db.get_db() as conn:
         conn.execute('BEGIN IMMEDIATE')
         jobs.fence(conn,job)
+        latest = conn.execute('SELECT p.target_date FROM publications p JOIN current_publication c ON p.batch_id=c.batch_id WHERE c.id=1').fetchone()
+        if latest and job['target_date'] < latest[0]:
+            raise ValueError('An older market date cannot replace the current publication')
         count = conn.execute('SELECT COUNT(*) FROM daily_results WHERE run_id=?',(job['run_id'],)).fetchone()[0]
         expected = conn.execute('SELECT COUNT(*) FROM run_assets WHERE run_id=?',(job['run_id'],)).fetchone()[0]*5
         if count != expected:
