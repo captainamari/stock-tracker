@@ -24,11 +24,20 @@ from starlette.middleware.gzip import GZipMiddleware
 
 from web.routes import dashboard, watchlist, ticker, api
 from web.i18n import get_language_from_request, SUPPORTED_LANGUAGES
+from web.auth import router as auth_router, guard
+from lib.migrations import migrate
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    migrate()
+    yield
 
 # ============================================================
 # App 初始化
 # ============================================================
 app = FastAPI(
+    lifespan=lifespan,
     title="Stock Tracker Dashboard",
     description="US Stock Technical Analysis & Signal Monitoring System",
     version="4.0.0",
@@ -36,6 +45,8 @@ app = FastAPI(
 
 # Gzip 压缩
 app.add_middleware(GZipMiddleware, minimum_size=500)
+app.middleware('http')(guard)
+app.include_router(auth_router)
 
 # 静态文件
 STATIC_DIR = Path(__file__).parent / "static"
@@ -50,7 +61,7 @@ async def set_language(request: Request, lang: str):
     """切换界面语言，写入 Cookie 后重定向回 Referer 或首页"""
     if lang not in SUPPORTED_LANGUAGES:
         lang = "en"
-    referer = request.headers.get("referer", "/")
+    referer = '/'
     response = RedirectResponse(url=referer, status_code=302)
     response.set_cookie("lang", lang, max_age=365 * 24 * 3600, httponly=False, samesite="lax")
     return response

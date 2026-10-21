@@ -71,7 +71,7 @@ def _json_dumps(obj) -> str:
 
 # 数据库文件位置
 DB_DIR = Path(__file__).parent.parent / "data"
-DB_PATH = DB_DIR / "stock_tracker.db"
+DB_PATH = Path(os.getenv('STOCK_DB', DB_DIR / "stock_tracker.db"))
 
 
 # ============================================================
@@ -220,7 +220,7 @@ def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
     - 返回 Row 对象以便按列名访问
     """
     path = db_path or DB_PATH
-    _ensure_dir()
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
