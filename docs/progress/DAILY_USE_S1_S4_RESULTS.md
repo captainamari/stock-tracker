@@ -64,7 +64,7 @@ Browser: actual Uvicorn on loopback. Real data `/` /watchlist /ticker/AAPL /admi
 ## Capacity, provider safeguards and limits
 
 - Capacity completed: 5,000 synthetic stocks + four benchmarks × 252 sessions = **1,261,008 bars**, 25,020 successful results, one atomic publication. **1,884.08 s (31m24s)**, **753.46 MiB** database, **134.72 MiB** peak sampled RSS. During update, 720 HTTP reads: p95 **0.998 s**, max **1.424 s**, zero HTTP/lock errors. Published dashboard/detail/watchlist HTTP: 1.339 / 0.114 / 1.898 s. Independent integrity check and all 5,004 asset / 25,020 result statuses passed. RSS was periodically sampled, not absolute OS peak; host also ran other verification. See evidence/capacity-validation.json. An initial exploratory run was interrupted to improve WAL checkpoint overhead and is not counted.
-- Draft PR [#2](https://github.com/captainamari/stock-tracker/pull/2), branch codex/daily-use-s1-s4. Earlier complete code at 6a980caa passed [remote CI](https://github.com/captainamari/stock-tracker/actions/runs/39597124750) (33 tests + compile + JS syntax + actual hub contract). Final follow-up adds five tests and the provider guard; the final SHA-specific CI status is tracked on this same Draft PR. Publishing uses the connected GitHub API because the local Windows Git credential helper is unavailable; every uploaded tree SHA is verified against its local commit.
+- Draft PR [#2](https://github.com/captainamari/stock-tracker/pull/2), branch codex/daily-use-s1-s4. Final implementation commit **a767792c0aa3e5517d94c28b8330bb262ddb2c83** passed [remote CI](https://github.com/captainamari/stock-tracker/actions/runs/39600744032): **38 tests in 10.63 s**, compileall, JS syntax and the six-case actual hub contract. This evidence update changes documentation only. Publishing uses the connected GitHub API because the local Windows Git credential helper is unavailable; every uploaded tree SHA is verified against its local commit.
 - Docker Compose configuration validated; Docker daemon was unavailable, so image build/container runtime remain unverified. No thousands-symbol live Yahoo test, production Docker/VPS execution, real Telegram/Email send, or production recovery drill is claimed. Synthetic capacity is not a full-market network benchmark. At the default five seconds between history calls, 5,004 assets alone take at least about 6h57m, excluding network, retries and calculation; the synthetic result does not establish completion before 06:00.
 - Hub cannot prove remote exactly-once or query an uncertain receipt; the app surfaces that limitation instead of retrying blindly.
 
@@ -89,5 +89,6 @@ The 1.26 million capacity bars are **synthetic and never deployment data**. Only
 | S3 | 11eb915e82fdbfa159e00545547979724bf0a2ff |
 | S4 | 0b2b10cfa558be44a21833450f05575bc672442b |
 | Recovery/source validation | 6a980caa1c43ca83c0832a73f8d94bfb9e7bc126 |
+| Final acceptance and Yahoo safeguards | a767792c0aa3e5517d94c28b8330bb262ddb2c83 |
 
 Final follow-up and its evidence are included in the same PR; no main merge or production cutover was performed.
