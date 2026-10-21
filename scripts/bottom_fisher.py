@@ -276,8 +276,8 @@ def analyze_bottom(ticker, ticker_info, data, stage2_states):
     # ============ 综合评分 ============
     valid = {k: v for k, v in conditions.items() if v is not None}
     passed = sum(1 for v in valid.values() if v)
-    total = len(valid)
-    is_bottom_signal = passed >= params["strong_signal_min"]
+    total = 8
+    is_bottom_signal = len(valid) == total and passed >= params["strong_signal_min"]
 
     bf_score = 0
     weights = {

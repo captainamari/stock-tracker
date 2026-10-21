@@ -65,26 +65,23 @@ def fetch_stock_data(ticker, min_rows=200):
     从 DB 获取股票数据，返回 DataFrame。
     缓存在内存中避免同一次运行重复读取。
     """
-    if ticker in _data_cache:
-        return _data_cache[ticker]
-
     df = get_prices_as_dataframe(ticker, min_rows=min_rows)
     if df is not None:
         log(f"  {ticker} 从 DB 加载 {len(df)} 条数据")
-        _data_cache[ticker] = df
         return df
 
     log(f"  {ticker} DB 数据不足 (需 {min_rows} 条)，跳过", "WARNING")
     return None
 
 
-def check_stage2_conditions(ticker_info):
+def check_stage2_conditions(ticker_info, loader=None, benchmark='SPY'):
     """检查 Stage 2 的 8 个条件，并记录每个条件的具体数值差距"""
     ticker = ticker_info.symbol
     log(f"📈 分析 {ticker} ({ticker_info.name})...")
 
-    data = fetch_stock_data(ticker)
-    if data is None or len(data) < 200:
+    loader = loader or fetch_stock_data
+    data = loader(ticker, min_rows=252)
+    if data is None or len(data) < 252:
         log(f"  {ticker} 数据不足，跳过", "WARNING")
         return None
 
@@ -99,7 +96,7 @@ def check_stage2_conditions(ticker_info):
     sma50_val = sma50_series.iloc[-1]
     sma150_val = sma150_series.iloc[-1]
     sma200_val = sma200_series.iloc[-1]
-    sma200_20days_ago = sma200_series.iloc[-20] if len(data) >= 220 else sma200_series.iloc[0]
+    sma200_20days_ago = sma200_series.iloc[-21]
 
     week52_high = close.tail(252).max()
     week52_low = close.tail(252).min()
@@ -164,15 +161,19 @@ def check_stage2_conditions(ticker_info):
         details['C7'] = f"距52周高点回撤过大 ({gap:+.1f}%)"
 
     # C8: 6个月相对强度 > SPY
-    benchmark_ticker = get_benchmark()
-    spy_data = fetch_stock_data(benchmark_ticker, min_rows=126)
+    benchmark_ticker = benchmark
+    spy_data = loader(benchmark_ticker, min_rows=127)
     stock_return_6m = None
     spy_return_6m = None
 
-    if spy_data is not None and len(spy_data) >= 126 and len(data) >= 126:
+    if spy_data is not None and len(spy_data) >= 127 and len(data) >= 127:
         try:
-            stock_return_6m = (close.iloc[-1] / close.iloc[-126] - 1) * 100
-            spy_return_6m = (spy_data['Close'].iloc[-1] / spy_data['Close'].iloc[-126] - 1) * 100
+            dates = data.index[-127:]
+            if not dates.isin(spy_data.index).all():
+                raise ValueError('Benchmark sessions do not align')
+            aligned = spy_data['Close'].reindex(dates)
+            stock_return_6m = (close.iloc[-1] / close.iloc[-127] - 1) * 100
+            spy_return_6m = (aligned.iloc[-1] / aligned.iloc[0] - 1) * 100
             conditions['C8'] = stock_return_6m > spy_return_6m
             if not conditions['C8']:
                 details['C8'] = f"跑输大盘 (个股 {stock_return_6m:+.1f}% vs SPY {spy_return_6m:+.1f}%)"
@@ -184,7 +185,7 @@ def check_stage2_conditions(ticker_info):
 
     # ---- 汇总 ----
     valid_conditions = {k: v for k, v in conditions.items() if v is not None}
-    is_stage2 = all(valid_conditions.values()) if valid_conditions else False
+    is_stage2 = len(valid_conditions) == 8 and all(valid_conditions.values())
 
     # 额外指标
     pct_from_high = (price / week52_high - 1) * 100
@@ -236,7 +237,7 @@ def check_stage2_conditions(ticker_info):
     # ---- SMA50 斜率 ----
     sma50_slope = None
     if len(data) >= 70:
-        sma50_20d_ago = sma50_series.iloc[-20]
+        sma50_20d_ago = sma50_series.iloc[-21]
         if sma50_20d_ago > 0:
             sma50_slope = round((sma50_val / sma50_20d_ago - 1) * 100, 2)
 
@@ -260,7 +261,8 @@ def check_stage2_conditions(ticker_info):
         'condition_details': details,
         'is_stage2': is_stage2,
         'passed': sum(1 for v in valid_conditions.values() if v),
-        'total': len(valid_conditions),
+        'total': 8,
+        'status': 'ok' if len(valid_conditions) == 8 else 'insufficient_data',
         'trend_power': int(tp_score),
         'vol_signal': vol_signal,
         'chg_5d': chg_5d,

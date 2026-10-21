@@ -150,7 +150,7 @@ def analyze_vcp(ticker, ticker_info, data, stage2_entry_info):
     if len(data) >= 70:
         sma50 = close.rolling(50).mean()
         sma50_now = sma50.iloc[-1]
-        sma50_20d_ago = sma50.iloc[-20]
+        sma50_20d_ago = sma50.iloc[-21]
         sma50_slope = (sma50_now / sma50_20d_ago - 1) * 100 if sma50_20d_ago > 0 else 0
         c5 = bool(sma50_slope > params["sma50_slope_min"])
         conditions['C5'] = c5
@@ -174,8 +174,8 @@ def analyze_vcp(ticker, ticker_info, data, stage2_entry_info):
     # 综合评分
     valid = {k: v for k, v in conditions.items() if v is not None}
     passed = sum(1 for v in valid.values() if v)
-    total = len(valid)
-    is_vcp = passed >= params["strong_signal_min"]
+    total = 6
+    is_vcp = len(valid) == total and passed >= params["strong_signal_min"]
 
     vcp_score = 0
     weights = {'C1': 15, 'C2': 20, 'C3': 25, 'C4': 20, 'C5': 10, 'C6': 10}
@@ -197,7 +197,7 @@ def analyze_vcp(ticker, ticker_info, data, stage2_entry_info):
         entry_price = stage2_entry_info.get('entry_price')
         if entry_date:
             try:
-                days_in_stage2 = (datetime.now() - datetime.strptime(entry_date, '%Y-%m-%d')).days
+                days_in_stage2 = (data.index[-1].to_pydatetime().replace(tzinfo=None) - datetime.strptime(entry_date, '%Y-%m-%d')).days
             except Exception:
                 pass
 

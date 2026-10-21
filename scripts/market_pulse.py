@@ -97,7 +97,7 @@ def analyze_index(ticker, data):
         result['ma_cross'] = None
 
     if len(data) >= 220:
-        sma200_20d_ago = sma(close, 200).iloc[-20]
+        sma200_20d_ago = sma(close, 200).iloc[-21]
         result['sma200_rising'] = bool(sma200 > sma200_20d_ago)
         result['sma200_slope'] = round((sma200 / sma200_20d_ago - 1) * 100, 2)
     else:
