@@ -1,0 +1,3 @@
+{% if admin and a.role|default('stock')=='stock' %}<div class="interest-controls">
+<button class="quiet interest" data-symbol="{{a.symbol}}" data-field="is_followed" data-value="{{1 if a.is_followed else 0}}" aria-pressed="{{'true' if a.is_followed else 'false'}}">{{'★' if a.is_followed else '☆'}} {{t('Following','关注')}}</button>
+<button class="quiet interest" data-symbol="{{a.symbol}}" data-field="is_held" data-value="{{1 if a.is_held else 0}}" aria-pressed="{{'true' if a.is_held else 'false'}}">{{'●' if a.is_held else '○'}} {{t('Held','持有')}}</button></div>{% endif %}

@@ -52,6 +52,6 @@ def test_failed_publication_rolls_back_pointer_states_and_report(database,monkey
     assert report_data(first)['body']==original
     with db.get_db() as conn:
         assert conn.execute('SELECT COUNT(*) FROM publications').fetchone()[0]==1
-        assert conn.execute('SELECT COUNT(*) FROM report_snapshots').fetchone()[0]==1
+        assert conn.execute('SELECT COUNT(*) FROM report_snapshots').fetchone()[0]==4
         assert states==[tuple(r) for r in conn.execute('SELECT * FROM candidate_states ORDER BY symbol,strategy_id')]
         assert conn.execute("SELECT COUNT(*) FROM update_runs WHERE status='failed'").fetchone()[0]==1

@@ -7,10 +7,32 @@ from web.i18n import get_language_from_request
 from web.auth import session
 from lib.settings import settings
 from lib.market_calendar import completed_session
+from lib.listing import near, score
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent/'templates'))
 templates.env.filters['price'] = lambda v: '—' if v is None else f'${v:,.2f}'
 templates.env.filters['number'] = lambda v: '—' if v is None else f'{v:,.2f}' if isinstance(v,(int,float)) else v
+templates.env.filters['pct'] = lambda v: '—' if v is None else f'{v:+.2f}%'
+
+
+def spark_path(values):
+    valid = [v for v in values if v is not None]
+    if not valid or len(values) < 2:
+        return ''
+    low, high = min(valid), max(valid)
+    path, connected = [], False
+    for i, value in enumerate(values):
+        if value is None:
+            connected = False
+            continue
+        x = 2 + i * 136 / (len(values)-1)
+        y = 18 if high == low else 34 - (value-low) * 32 / (high-low)
+        path.append(f'{"L" if connected else "M"}{x:.1f},{y:.1f}')
+        connected = True
+    return ' '.join(path)
+
+
+templates.env.filters['spark_path'] = spark_path
 NAMES = {'stage2_us':('Stage 2','Stage 2 趋势'), 'contraction_us':('Contraction candidates','收缩候选'),
          'bottom_fisher_us':('Countertrend watch','逆势观察'), 'checklist_us':('Checklist','条件清单')}
 STATUS = {'ok':('Available','可用'),'pending':('Pending update','待更新'),'insufficient_data':('Insufficient data','数据不足'),
@@ -41,7 +63,7 @@ def context(request):
         return t(*values.get(key,(key,key)))
     def local_time(value):
         return datetime.fromisoformat(value.replace('Z','+00:00')).astimezone(ZoneInfo(settings().display_timezone)).strftime('%Y-%m-%d %H:%M %Z') if value else '—'
-    return dict(lang=lang,t=t,status_label=label,names={s:t(*v) for s,v in NAMES.items()},
+    return dict(lang=lang,t=t,status_label=label,near=near,strategy_score=score,names={s:t(*v) for s,v in NAMES.items()},
                 condition_names={s:[t(*v) for v in names] for s,names in CONDITIONS.items()},
                 admin=bool(session(request)),local_time=local_time,expected_date=completed_session(),regime_label=regime_label,group_label=group_label,
                 display_timezone=settings().display_timezone)

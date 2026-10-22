@@ -13,14 +13,19 @@ def get_schedule(conn=None):
     if conn is None:
         with db.get_db() as own:
             return get_schedule(own)
-    defaults=dict(update_time=settings().update_time,notify_time=settings().notify_time,channel='trading',enabled=False)
+    defaults=dict(update_time=settings().update_time,notify_time=settings().notify_time,channel='trading',enabled=False,
+                  report_scope='personal',report_mode='standard')
     row=conn.execute("SELECT value FROM settings WHERE key='schedule'").fetchone()
     return {**defaults,**(json.loads(row[0]) if row else {})}
 
 
 def save_schedule(value):
-    if set(value)!= {'update_time','notify_time','channel','enabled'}:
+    required = {'update_time','notify_time','channel','enabled'}
+    if not required <= set(value) or set(value) - required - {'report_scope','report_mode'}:
         raise ValueError('Unknown configuration field')
+    value = {**get_schedule(), **value}
+    if value['report_scope'] not in ('following','held','personal') or value['report_mode'] not in ('standard','compact'):
+        raise ValueError('Invalid report scope or mode')
     for field in ('update_time','notify_time'):
         if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',value[field]):
             raise ValueError('Time must be HH:MM')

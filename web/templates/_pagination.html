@@ -1,0 +1,6 @@
+<nav class="pagination" aria-label="{{t('Pagination','分页')}}">
+<span>{{pager.start}}–{{pager.end}} / {{pager.total}} · {{t('Page','第')}} {{pager.page}} / {{pager.pages}}</span>
+{% if pager.page>1 %}<a href="{{page_url(page=pager.page-1,size=pager.size)}}">← {{t('Previous','上一页')}}</a>{% endif %}
+{% if pager.page<pager.pages %}<a href="{{page_url(page=pager.page+1,size=pager.size)}}">{{t('Next','下一页')}} →</a>{% endif %}
+<form method="get" class="page-jump">{% for key,value in request.query_params.items() if key not in ['page','size'] %}<input type="hidden" name="{{key}}" value="{{value}}">{% endfor %}{% if batch_id and 'batch' not in request.query_params %}<input type="hidden" name="batch" value="{{batch_id}}">{% endif %}<input type="hidden" name="size" value="{{pager.size}}"><label>{{t('Go to','跳转')}} <input type="number" name="page" min="1" max="{{pager.pages}}" value="{{pager.page}}" aria-label="{{t('Page number','页码')}}"></label><button class="quiet">{{t('Go','前往')}}</button></form>
+</nav>

@@ -41,7 +41,40 @@ def add_ticker(payload: AddTickerRequest):
           VALUES (?,?,?,?,?,1,?) ON CONFLICT(symbol) DO UPDATE SET name=excluded.name,sector=excluded.sector,
           yf_ticker=excluded.yf_ticker,is_public=excluded.is_public,enabled=1,is_personal=1,updated_at=excluded.updated_at''',
           (payload.symbol, payload.name or payload.symbol, payload.sector, payload.yf_ticker or payload.symbol.replace('.', '-'), int(payload.is_public), stamp()))
+        conn.execute('UPDATE watchlist SET is_followed=1 WHERE symbol=?', (payload.symbol,))
     return {'symbol': payload.symbol, 'status': 'pending', 'message': 'Saved; use Update data to collect market data.'}
+
+
+class InterestUpdate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    symbols: list[str] = Field(min_length=1, max_length=100)
+    is_followed: bool | None = None
+    is_held: bool | None = None
+
+
+@router.patch('/interests')
+def interests(payload: InterestUpdate, request: Request):
+    require_admin(request)
+    from lib.interests import update
+    try:
+        update(payload.symbols, payload.is_followed, payload.is_held)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {'status': 'saved'}
+
+
+@router.get('/assets')
+def assets(request: Request, batch: str | None = None, page: int = 1, size: int = 20,
+           scope: str = 'all', search: str = '', strategy: str = '', match: str = 'all', sort: str = 'symbol'):
+    from lib.queries import dashboard_data
+    from lib.listing import select, paginate
+    private = bool(session(request))
+    if scope != 'all' and not private:
+        raise HTTPException(401, 'Administrator login required')
+    data = dashboard_data(batch, private, include_pending=True)
+    result = paginate(select(data['assets'], scope=scope, search=search, strategy=strategy,
+                             match=match, sort=sort, private=private), page, size)
+    return {**result, 'batch_id': data['batch_id']}
 
 
 @router.delete('/tickers/{symbol}')
