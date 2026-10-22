@@ -37,10 +37,16 @@ def select(rows, *, scope='all', search='', strategy='', match='all', sort='symb
         result = [a for a in result if any(strategy not in STRATEGIES or c['strategy']==strategy for c in a.get('changes',[]))]
     if strategy in STRATEGIES:
         result = [a for a in result if a.get('role') != 'benchmark']
-        if match == 'matched':
-            result = [a for a in result if a.get('strategies', {}).get(strategy, {}).get('is_signal')]
-        elif match == 'near':
-            result = [a for a in result if near(a.get('strategies', {}).get(strategy, {}), strategy)]
+    if match in ('matched','near'):
+        keys = (strategy,) if strategy in STRATEGIES else STRATEGIES
+        def matches(asset):
+            for key in keys:
+                r = asset.get('strategies', {}).get(key, {})
+                matched = (r.get('status')=='ok' and r.get('is_signal')) if match=='matched' else near(r,key)
+                if matched:
+                    return True
+            return False
+        result = [a for a in result if a.get('role') != 'benchmark' and matches(a)]
     result.sort(key=lambda a: a['symbol'])
     if sort in ('price', 'change', 'score'):
         def value(a):

@@ -78,6 +78,16 @@ def test_filter_whole_list_then_paginate_with_stable_ties(admin):
     assert paginate([],99)['page']==1 and paginate([],99)['total']==0
 
 
+def test_state_filter_without_selected_strategy_matches_any_strategy():
+    rows=[dict(symbol=s,name='',role='stock',strategies=r) for s,r in [
+        ('MATCH',{'stage2_us':{'status':'ok','is_signal':True,'passed':8}}),
+        ('NEAR',{'checklist_us':{'status':'ok','is_signal':False,'passed':5}}),
+        ('UNKNOWN',{'stage2_us':{'status':'failed','is_signal':None,'passed':0}})]]
+    assert [a['symbol'] for a in select(rows,match='matched')]==['MATCH']
+    assert [a['symbol'] for a in select(rows,match='near')]==['NEAR']
+    assert not select(rows,strategy='stage2_us',match='near')
+
+
 def test_frozen_private_reports_preview_no_io_and_public_separation(admin, monkeypatch):
     seed_watchlist(('AAA','SECRET','OTHER'))
     labels(['AAA','SECRET'],followed=True)
