@@ -72,17 +72,22 @@ def parse_tickers(config: Dict) -> List[TickerInfo]:
     return tickers
 
 
-def sync_watchlist(config: Optional[Dict] = None, config_path: Optional[Path] = None):
+def sync_watchlist(config: Optional[Dict] = None, config_path: Optional[Path] = None, *, explicit=False):
     """
     将 tickers.json 同步到数据库 watchlist 表。
     幂等操作：存在则更新，不存在则插入。
     """
+    if get_watchlist(enabled_only=False) and not explicit:
+        return  # Database is authoritative after initialization.
     if config is None:
         config = load_config(config_path)
 
     tickers = parse_tickers(config)
     db_records = [t.to_db_dict() for t in tickers]
     upsert_watchlist(db_records)
+    from lib import db
+    with db.get_db() as conn:
+        conn.executemany('UPDATE watchlist SET is_personal=1 WHERE symbol=?', [(r['symbol'],) for r in db_records])
     print(f"✅ Watchlist 已同步: {len(db_records)} 只股票")
 
 
@@ -127,7 +132,8 @@ def get_benchmark(config: Optional[Dict] = None) -> str:
 # ============================================================
 if __name__ == "__main__":
     print("📋 加载配置并同步 watchlist...")
-    init_db()
+    from lib.migrations import migrate
+    migrate()
     config = load_config()
     sync_watchlist(config)
 

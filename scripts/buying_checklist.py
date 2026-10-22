@@ -108,7 +108,7 @@ def analyze_buying_checklist(ticker, ticker_info, data, stage2_states, bf_states
     # C1: 周线 Elder Impulse 为 Green（多头冲量）
     elder_info = elder_impulse_weekly(data)
     weekly_impulse = elder_info['weekly_impulse']
-    c1 = (weekly_impulse == params["weekly_impulse_required"])
+    c1 = (weekly_impulse == params["weekly_impulse_required"]) if elder_info['weekly_ema13'] is not None else None
     conditions['C1'] = c1
     metrics['weekly_impulse'] = weekly_impulse
     metrics['weekly_ema13'] = elder_info['weekly_ema13']
@@ -258,8 +258,8 @@ def analyze_buying_checklist(ticker, ticker_info, data, stage2_states, bf_states
     # ============ 综合评分 ============
     valid = {k: v for k, v in conditions.items() if v is not None}
     passed = sum(1 for v in valid.values() if v)
-    total = len(valid)
-    is_bc_signal = passed >= params["strong_signal_min"]
+    total = 11
+    is_bc_signal = len(valid) == total and passed >= params["strong_signal_min"]
 
     # 加权评分
     bc_score = 0
@@ -485,6 +485,8 @@ def parse_args():
 
 
 def main():
+    raise SystemExit('Legacy standalone execution is disabled. Use the admin Update data action or python -m lib.cli scheduler; run python -m lib.cli worker separately. See DEPLOY.md.')
+
     args = parse_args()
     log("开始执行买入检查清单扫描...")
 

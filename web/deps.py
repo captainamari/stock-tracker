@@ -1,167 +1,51 @@
-"""
-Web 层共享依赖：Jinja2 模板引擎、工具函数、i18n 集成
-"""
-
+"""Request-local presentation; never mutate global template filters in a request."""
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from fastapi.templating import Jinja2Templates
+from web.i18n import get_language_from_request
+from web.auth import session
+from lib.settings import settings
+from lib.market_calendar import completed_session
 
-from web.i18n import get_translator, DEFAULT_LANGUAGE
+templates = Jinja2Templates(directory=str(Path(__file__).parent/'templates'))
+templates.env.filters['price'] = lambda v: '—' if v is None else f'${v:,.2f}'
+templates.env.filters['number'] = lambda v: '—' if v is None else f'{v:,.2f}' if isinstance(v,(int,float)) else v
+NAMES = {'stage2_us':('Stage 2','Stage 2 趋势'), 'contraction_us':('Contraction candidates','收缩候选'),
+         'bottom_fisher_us':('Countertrend watch','逆势观察'), 'checklist_us':('Checklist','条件清单')}
+STATUS = {'ok':('Available','可用'),'pending':('Pending update','待更新'),'insufficient_data':('Insufficient data','数据不足'),
+          'stale':('Stale','过期'),'failed':('Failed','失败'),'queued':('Queued','排队中'),'running':('Running','运行中'),
+          'published':('Published','已发布'),'sent':('Sent','已投递'),'partial':('Partially delivered','部分投递'),
+          'unknown':('Delivery uncertain','投递结果未知'),'retryable':('Waiting to retry','等待重试'),'blocked':('Needs configuration','需配置'),
+          'sending':('Sending','发送中'),'resolved':('Resolved without resend','已处理，未重发')}
 
-# ============================================================
-# Jinja2 模板
-# ============================================================
-TEMPLATES_DIR = Path(__file__).parent / "templates"
-TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
-
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-
-# ============================================================
-# 自定义过滤器（纯格式化，语言无关）
-# ============================================================
-def _fmt_pct(value, decimals=1):
-    """格式化百分比"""
-    if value is None:
-        return "—"
-    sign = "+" if value > 0 else ""
-    return f"{sign}{value:.{decimals}f}%"
-
-def _fmt_price(value):
-    """格式化价格"""
-    if value is None:
-        return "—"
-    return f"${value:,.2f}"
-
-def _fmt_score(value):
-    """格式化评分"""
-    if value is None:
-        return "—"
-    return f"{value:.0f}"
-
-def _score_color(score):
-    """评分对应的 CSS 颜色类"""
-    if score is None:
-        return "text-dim"
-    if score >= 80:
-        return "text-green"
-    if score >= 60:
-        return "text-yellow"
-    if score >= 40:
-        return "text-orange"
-    return "text-red"
-
-def _regime_emoji(regime):
-    """市场状态 emoji"""
-    mapping = {
-        "bullish": "🟢",
-        "neutral": "🟡",
-        "cautious": "🟠",
-        "bearish": "🔴",
-    }
-    return mapping.get(regime, "⚪")
-
-def _regime_label(regime):
-    """市场状态标签 — i18n 版本，从 Jinja2 全局 _lang 读取当前语言"""
-    # 这个过滤器会被 _regime_label_i18n 工厂替换
-    mapping = {
-        "bullish": "Offensive",
-        "neutral": "Cautious",
-        "cautious": "Defensive",
-        "bearish": "Cash",
-    }
-    return mapping.get(regime, "Unknown")
-
-def _change_type_info(change_type):
-    """信号变化类型的 emoji + 标签 — 默认英文"""
-    mapping = {
-        "entry": ("🟢", "Entry Signal"),
-        "exit": ("🔴", "Exit Signal"),
-        "new_signal": ("🆕", "New Signal"),
-        "lost_signal": ("⚪", "Lost Signal"),
-    }
-    return mapping.get(change_type, ("❓", change_type))
-
-def _strategy_label(strategy):
-    """策略显示名"""
-    mapping = {
-        "stage2": "Stage 2",
-        "vcp": "VCP",
-        "bottom_fisher": "Bottom Fisher",
-        "buying_checklist": "Buying Checklist",
-    }
-    return mapping.get(strategy, strategy)
-
-def _chg_color(value):
-    """涨跌幅颜色"""
-    if value is None:
-        return "text-dim"
-    if value > 0:
-        return "text-green"
-    if value < 0:
-        return "text-red"
-    return "text-dim"
+CONDITIONS = {
+ 'stage2_us': [('Price > SMA150 and SMA200','价格高于 SMA150 和 SMA200'),('SMA150 > SMA200','SMA150 高于 SMA200'),('SMA200 rising over 20 sessions','SMA200 较20个交易日前上升'),('SMA50 > SMA150 and SMA200','SMA50 高于 SMA150 和 SMA200'),('Price > SMA50','价格高于 SMA50'),('Price > 52-week low × 1.25','价格高于52周低点的1.25倍'),('Price > 52-week high × 0.75','价格高于52周高点的0.75倍'),('126-session return > SPY on aligned dates','同日期126交易日回报高于 SPY')],
+ 'contraction_us': [('52-week drawdown ≥ −25%','52周高点回撤不超过25%'),('20-session drawdown ≥ −10%','20日高点回撤不超过10%'),('Bandwidth percentile ≤ 25','布林带宽分位不超过25'),('Volume ratio < 0.75; ≥4/5 dry days','量比低于0.75，5天至少4天缩量'),('SMA50 rising over 20 sessions','SMA50 较20个交易日前上升'),('Within 3% of SMA10','距 SMA10 不超过3%')],
+ 'bottom_fisher_us': [('Within −15% / +10% of SMA200','距 SMA200 在−15%至+10%'),('Trend quality or prior Stage2 entry','趋势质地或历史 Stage2 记录'),('52-week drawdown ≤ −15%','52周回撤至少15%'),('20-session drawdown ≤ −8%','20日回撤至少8%'),('Within 3% of support','距支撑不超过3%'),('RSI oversold or bullish divergence','RSI 超卖或底背离'),('Volume ratio < 0.6','量比低于0.6'),('MACD bullish divergence','MACD 底背离')],
+ 'checklist_us': [('Weekly impulse green (provisional week)','周线冲量为绿（含本周暂态）'),('EMA10 > EMA21','EMA10 高于 EMA21'),('SMA50 > SMA200','SMA50 高于 SMA200'),('RSI between 40 and 70','RSI 在40至70'),('MACD positive / improving','MACD 为正或改善'),('Price above SMA50 and SMA200','价格高于 SMA50 和 SMA200'),('52-week drawdown ≥ −25%','52周回撤不超过25%'),('At least 10% above 52-week low','距52周低点至少上涨10%'),('10/50-day volume ratio ≥ 1','10/50日量比至少为1'),('Volume expansion in last three days','近3日有放量'),('Stage2 confirmed in this batch','同批次 Stage2 已确认')]
+}
 
 
-# ============================================================
-# i18n-aware 过滤器工厂
-# ============================================================
-def make_regime_label_filter(t):
-    """创建绑定到翻译函数的 regime_label 过滤器"""
-    def _filter(regime):
-        return t(f"regime.{regime}") if regime else t("common.unknown")
-    return _filter
+def context(request):
+    lang = get_language_from_request(request)
+    def t(en,zh):
+        return zh if lang=='zh' else en
+    def label(key):
+        return t(*STATUS.get(key,(key or '—',key or '—')))
+    def regime_label(key):
+        values={'bullish':('Bullish','偏多'),'bearish':('Bearish','偏空'),'neutral':('Neutral','中性'),'caution':('Caution','谨慎'),'risk_on':('Risk on','风险偏好'),'risk_off':('Risk off','风险回避')}
+        return t(*values.get(key,(key,key))) if key else t('Unavailable: required inputs missing','不可用：必要输入缺失')
+    def group_label(key):
+        values={'moving_averages':('Moving averages','移动均线'),'momentum':('Momentum','动量'),'support_resistance':('Support and resistance','支撑与阻力'),'fibonacci':('Fibonacci levels','斐波那契水平')}
+        return t(*values.get(key,(key,key)))
+    def local_time(value):
+        return datetime.fromisoformat(value.replace('Z','+00:00')).astimezone(ZoneInfo(settings().display_timezone)).strftime('%Y-%m-%d %H:%M %Z') if value else '—'
+    return dict(lang=lang,t=t,status_label=label,names={s:t(*v) for s,v in NAMES.items()},
+                condition_names={s:[t(*v) for v in names] for s,names in CONDITIONS.items()},
+                admin=bool(session(request)),local_time=local_time,expected_date=completed_session(),regime_label=regime_label,group_label=group_label,
+                display_timezone=settings().display_timezone)
 
 
-def make_change_type_info_filter(t):
-    """创建绑定到翻译函数的 change_type_info 过滤器"""
-    def _filter(change_type):
-        emoji = t(f"change_type.{change_type}.emoji") if change_type else "❓"
-        label = t(f"change_type.{change_type}.label") if change_type else change_type
-        # If key not found, translate() returns the key itself
-        if emoji.startswith("change_type."):
-            emoji = "❓"
-        if label.startswith("change_type."):
-            label = change_type
-        return (emoji, label)
-    return _filter
-
-
-# ============================================================
-# 注册所有过滤器（语言无关的静态过滤器）
-# ============================================================
-templates.env.filters["fmt_pct"] = _fmt_pct
-templates.env.filters["fmt_price"] = _fmt_price
-templates.env.filters["fmt_score"] = _fmt_score
-templates.env.filters["score_color"] = _score_color
-templates.env.filters["regime_emoji"] = _regime_emoji
-templates.env.filters["regime_label"] = _regime_label
-templates.env.filters["strategy_label"] = _strategy_label
-templates.env.filters["chg_color"] = _chg_color
-templates.env.filters["change_type_info"] = _change_type_info
-
-
-def setup_i18n_context(request, lang: str) -> dict:
-    """
-    创建 i18n 模板上下文变量。
-    在路由中调用，将翻译函数和语言信息注入模板。
-
-    返回一个 dict，合并到 TemplateResponse context 中。
-    同时会动态覆盖 i18n 相关的 Jinja2 过滤器。
-    """
-    import json as _json
-    from web.i18n.core import _load_pack
-
-    t = get_translator(lang)
-
-    # 动态替换 i18n 相关过滤器为当前语言版本
-    templates.env.filters["regime_label"] = make_regime_label_filter(t)
-    templates.env.filters["change_type_info"] = make_change_type_info_filter(t)
-
-    # 获取语言包 JSON 字符串供前端 JS 使用
-    pack = _load_pack(lang)
-    i18n_json = _json.dumps(pack, ensure_ascii=False)
-
-    return {
-        "_t": t,              # 翻译函数 _t("key", param=val)
-        "_lang": lang,        # 当前语言 "en" / "zh"
-        "_i18n_json": i18n_json,  # 完整语言包 JSON 字符串
-    }
+def render(request,template,data=None):
+    return templates.TemplateResponse(request=request,name=template,context={**context(request),**(data or {})})

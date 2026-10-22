@@ -97,7 +97,7 @@ def analyze_index(ticker, data):
         result['ma_cross'] = None
 
     if len(data) >= 220:
-        sma200_20d_ago = sma(close, 200).iloc[-20]
+        sma200_20d_ago = sma(close, 200).iloc[-21]
         result['sma200_rising'] = bool(sma200 > sma200_20d_ago)
         result['sma200_slope'] = round((sma200 / sma200_20d_ago - 1) * 100, 2)
     else:
@@ -576,6 +576,8 @@ def parse_args():
 
 
 def main():
+    raise SystemExit('Legacy standalone execution is disabled. Use the admin Update data action or python -m lib.cli scheduler; run python -m lib.cli worker separately. See DEPLOY.md.')
+
     args = parse_args()
     log("开始执行 Market Pulse 分析...")
 

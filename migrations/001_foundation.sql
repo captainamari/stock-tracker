@@ -1,0 +1,10 @@
+ALTER TABLE watchlist ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0 CHECK(is_public IN (0,1));
+ALTER TABLE stock_prices ADD COLUMN source TEXT NOT NULL DEFAULT 'legacy_unknown';
+ALTER TABLE stock_prices ADD COLUMN basis TEXT NOT NULL DEFAULT 'legacy_unknown';
+ALTER TABLE stock_prices ADD COLUMN fetched_at TEXT;
+ALTER TABLE stock_prices ADD COLUMN quality TEXT NOT NULL DEFAULT 'legacy_unknown';
+CREATE TABLE admin_account (id INTEGER PRIMARY KEY CHECK(id=1), password_hash TEXT NOT NULL, csrf_secret TEXT NOT NULL);
+CREATE TABLE admin_sessions (token_hash TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires REAL NOT NULL);
+CREATE TABLE login_attempts (ip TEXT NOT NULL, attempted REAL NOT NULL);
+CREATE INDEX login_time ON login_attempts(attempted);
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);

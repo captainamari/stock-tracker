@@ -1,0 +1,10 @@
+{% if universe.enabled %}
+<section class="panel" id="index-universe">
+  <h2>{{t('S&P 500 + Nasdaq-100','标普 500 + 纳斯达克 100')}}</h2>
+  <p>{{universe.counts.get('sp500',0)}} + {{universe.counts.get('nasdaq100',0)}} → <strong>{{universe.unique}} {{t('unique index stocks','只去重指数成分股')}}</strong></p>
+  <p>{{t('Enabled personal entries are retained. Overlapping stocks download once; SPY, QQQ, IWM and VIX remain benchmarks.','保留已启用的个人观察股票。重叠股票只下载一次，并保留 SPY、QQQ、IWM 和 VIX 四个基准。')}}</p>
+  <p class="muted">{{t('Membership retrieved','成分名单获取时间')}}: {{local_time(universe.fetched_at) if universe.fetched_at else '—'}} · {{t('Checked weekly by the update worker. Membership uses public Wikipedia constituent tables; prices use yfinance.','更新进程每周检查名单。成分名单来自维基百科公开成分股表；行情来自 yfinance。')}}</p>
+  {% if universe.stale %}<p class="notice">{{t('Membership is due for refresh. The next update checks it; the last complete list stays active if the source is unavailable.','成分名单待刷新。下次更新时检查；来源不可用时保留上次完整名单。')}}</p>{% endif %}
+  {% if admin and universe.error %}<p class="notice">{{t('Last membership refresh failed validation or retrieval. Using the previous complete lists; another attempt is allowed after 24 hours.','上次成分名单获取或校验失败，继续使用上次完整名单，24 小时后可再次尝试。')}}</p>{% endif %}
+</section>
+{% endif %}
