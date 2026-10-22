@@ -43,18 +43,24 @@ def test_schedule_save_does_not_send_and_no_late_resend(admin):
 
 
 def test_hub_adapter_receipts_and_no_blind_retry(database,monkeypatch):
-    enable()
-    monkeypatch.setenv('NOTIFICATION_API_URL','http://isolated-hub')
-    monkeypatch.setenv('NOTIFICATION_API_TOKEN','synthetic-contract-token')
+    monkeypatch.delenv('NOTIFICATION_API_URL',raising=False)
+    monkeypatch.delenv('NOTIFICATION_API_TOKEN',raising=False)
+    assert get_schedule()['channel']=='trading' and get_schedule()['enabled'] is False
     calls=[]
     def handler(request):
         calls.append(request)
+        assert str(request.url)=='https://notify.watchpoint.space/api/v1/notify'
         assert request.headers['authorization']=='Bearer synthetic-contract-token'
         payload=json.loads(request.content)
         assert set(payload)=={'title','message','channel','level','source','metadata'}
+        assert payload['channel']=='trading'
         return httpx.Response(200,json=dict(request_id='receipt',status='sent',channel='trading',delivered_to=['synthetic'],skipped=[],failed={}))
     identifier=delivery.queue_test()
     client=delivery.HubClient(httpx.Client(transport=httpx.MockTransport(handler)))
+    assert delivery.run_once(client)==identifier
+    assert delivery.list_deliveries()[0]['status']=='blocked' and calls==[]
+    monkeypatch.setenv('NOTIFICATION_API_TOKEN','synthetic-contract-token')
+    delivery.retry(identifier)
     assert delivery.run_once(client)==identifier
     assert delivery.run_once(client) is None
     assert len(calls)==1 and delivery.list_deliveries()[0]['status']=='sent'

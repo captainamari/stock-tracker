@@ -38,7 +38,7 @@ python -m lib.cli notify-worker
 - 行情为 yfinance `auto_adjust=True` 的拆股/分红复权 OHLC、原始成交量。回看重采缺口、修订及公司行动，不换口径、不填补缺失。旧数据保留为 `legacy_unknown`，不冒充已验证行情。
 - Stage2 为完整 8 项必要条件；收缩候选保留原 VCP 规则（不宣称确认突破）；逆势观察独立分区；Checklist 分数不是胜率，周线含本周暂态。
 - 每批保存规则版本、输入修订和完整结果，页面、API、CSV、日报按同一发布批次读取。失败不伪造退出；零候选不回填旧信号；持续活跃保留进入日期。
-- hub URL/token 通过环境注入，渠道引用在管理页设置。渠道与 Telegram/SMTP 凭据只归 hub。保存设置不发送；测试发送需明确按钮操作。
+- hub 默认地址为 `https://notify.watchpoint.space`，可用 `NOTIFICATION_API_URL` 覆盖；`NOTIFICATION_API_TOKEN` 必须通过服务器私有环境注入。管理页渠道引用默认 `trading`（Telegram），已有保存的渠道不会被覆盖。Telegram/SMTP 凭据只归 hub。保存设置不发送；测试发送需明确按钮操作。配置步骤见 [DEPLOY.md](DEPLOY.md#公网通知服务配置)。
 - hub 当前没有远程幂等键或回执查询。超时/部分投递标记待核对，不自动重发；可确认处理而不重发。安全连接失败分段最多尝试三次。长日报按固定快照分段，成功分段不重复发。缺目标日报发送缺失摘要，不自动补发。
 
 ## 验证

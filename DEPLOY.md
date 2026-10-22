@@ -60,12 +60,33 @@ python -m scripts.verify_hub_contract --checkout ../notification-hub
 
 ## S5 生产验收（本次未执行）
 
+以下是 Stock Tracker 生产切换验收；独立 notification-hub 的公网 HTTPS 和 Telegram 收件已单独验证，不代表 Stock Tracker 已部署或启用定时通知。
+
 - 核实 VPS 数据路径、磁盘容量、SQLite 本地盘和文件权限，备份保存与隔离恢复可用。
 - 核对 TLS、Secure/SameSite/HttpOnly cookie、反向代理及管理员登录，访客写入/隐私隔离。
 - 停旧 cron、旧 worker 和直连 Telegram；启动新四进程并验证重启、过期租约接管。
 - 实地观察纽约 04:00 / 06:00、假日/DST 的计划记录、最新行情日期和缺失告警。
 - 经用户另行授权，用真实 hub 凭据验证真实 Telegram/Email 收件与超时人工核对流程。
 - 对照已验证备份执行回滚演练，记录实际版本、路径、监控及恢复耗时。
+
+## 公网通知服务配置
+
+默认 hub 基址为 `https://notify.watchpoint.space`，完整发送路径由客户端自动拼成 `https://notify.watchpoint.space/api/v1/notify`。hub 的 `trading` 渠道路由到 Telegram。Stock Tracker 可以部署在另一台服务器，使用正常 HTTPS 证书校验访问；无需在 Stock Tracker 所在服务器再部署 hub。
+
+1. 在 Stock Tracker 的私有 `.env` 中设置以下两项。新安装可从 `.env.example` 复制；已有安装直接编辑现有文件，不覆盖其他设置。实际 token 与 hub 的 `API_TOKEN` 相同，仅通过服务器环境注入，不提交 Git，也不填写到网页渠道字段。
+
+   ```env
+   NOTIFICATION_API_URL=https://notify.watchpoint.space
+   NOTIFICATION_API_TOKEN=<现有 hub API_TOKEN>
+   ```
+
+   省略 URL 环境变量时使用上述默认地址；显式空字符串仍表示不配置 hub，旧 `.env` 中的空值需填入地址。token 未配置时发送任务会被标记为 `blocked`，不会访问 hub。
+
+2. 执行 `docker compose up -d --force-recreate`，让四个服务加载新环境；仅 `restart` 不会更新环境变量。原生部署须由服务管理器注入相同变量并重启相关进程。
+3. 登录 `/admin`，将 **Hub channel reference / Hub 渠道引用** 设为 `trading` 并保存。空库已默认使用此渠道；已有数据库保存的其他渠道需要在此显式修改，升级不会覆盖其计划。不要填写 Telegram chat ID 或 token。
+4. 保持定时通知关闭，点击 **Send a test message / 发送测试消息**，同时核对管理页投递状态及 Telegram 收件。确认后按需启用定时通知。更新时间默认纽约交易日 04:00，通知默认 06:00；通知开关不控制行情更新。启用时若当天发送时刻已过且尚未执行，scheduler 可在下一次检查立即补执行当天通知。
+
+地址和渠道配置不包含 token，也不自动启用定时通知。此次变更不部署 Stock Tracker、不修改现有行情库、不再次发送真实通知。
 
 
 ## Yahoo 请求控制与真实数据复用

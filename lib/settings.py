@@ -32,7 +32,7 @@ class Settings:
     yahoo_cooldown_seconds: int = field(default_factory=lambda: int(os.getenv('YAHOO_COOLDOWN_SECONDS', '21600')))
     secure_cookies: bool = field(default_factory=lambda: os.getenv('COOKIE_SECURE', 'true').lower() == 'true')
     public_url: str = field(default_factory=lambda: os.getenv('PUBLIC_URL', 'http://127.0.0.1:8000').rstrip('/'))
-    hub_url: str = field(default_factory=lambda: os.getenv('NOTIFICATION_API_URL', '').rstrip('/'))
+    hub_url: str = field(default_factory=lambda: os.getenv('NOTIFICATION_API_URL', 'https://notify.watchpoint.space').rstrip('/'))
     hub_token: str = field(default_factory=lambda: os.getenv('NOTIFICATION_API_TOKEN', ''))
 
     def __post_init__(self):
