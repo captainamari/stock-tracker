@@ -8,4 +8,12 @@ router=APIRouter()
 
 @router.get('/watchlist')
 def watchlist_page(request: Request,batch: str | None=None):
-    return render(request,'watchlist.html',dashboard_data(batch,bool(session(request))))
+    from lib import db
+    from lib.universe import summary
+    private = bool(session(request))
+    data = dashboard_data(batch, private)
+    with db.get_db() as conn:
+        data['universe'] = summary(conn)
+    if not private:
+        data['universe'].pop('error', None)
+    return render(request,'watchlist.html',data)

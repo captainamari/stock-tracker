@@ -85,6 +85,9 @@ def sync_watchlist(config: Optional[Dict] = None, config_path: Optional[Path] = 
     tickers = parse_tickers(config)
     db_records = [t.to_db_dict() for t in tickers]
     upsert_watchlist(db_records)
+    from lib import db
+    with db.get_db() as conn:
+        conn.executemany('UPDATE watchlist SET is_personal=1 WHERE symbol=?', [(r['symbol'],) for r in db_records])
     print(f"✅ Watchlist 已同步: {len(db_records)} 只股票")
 
 
@@ -129,7 +132,8 @@ def get_benchmark(config: Optional[Dict] = None) -> str:
 # ============================================================
 if __name__ == "__main__":
     print("📋 加载配置并同步 watchlist...")
-    init_db()
+    from lib.migrations import migrate
+    migrate()
     config = load_config()
     sync_watchlist(config)
 

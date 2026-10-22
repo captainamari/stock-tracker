@@ -10,12 +10,35 @@ DEPENDENCIES = {'SPY': 'SPY', 'QQQ': 'QQQ', 'IWM': 'IWM', 'VIX': '^VIX'}
 
 
 def dependencies(conn):
-    rows = {r['symbol']: dict(r) for r in conn.execute('SELECT * FROM watchlist WHERE enabled=1')}
+    from lib.universe import active_clause, yahoo_symbol
+    rows = {}
+    # One daily-history request per Yahoo ticker, including spelling aliases.
+    # Privacy is conservative when two personal entries name the same security.
+    for r in conn.execute(f'SELECT * FROM watchlist w WHERE {active_clause()} ORDER BY is_personal DESC,is_public,symbol'):
+        if r['symbol'] in DEPENDENCIES:
+            continue
+        value = dict(r)
+        yf = yahoo_symbol(value['yf_ticker'] or value['symbol'])
+        value['yf_ticker'] = yf
+        if yf in rows:
+            rows[yf]['is_public'] = min(rows[yf]['is_public'], value['is_public'])
+        else:
+            rows[yf] = value
     for symbol, yf_symbol in DEPENDENCIES.items():
         existing = conn.execute('SELECT * FROM watchlist WHERE symbol=?', (symbol,)).fetchone()
-        rows.setdefault(symbol, dict(existing) if existing else {'symbol': symbol, 'name': symbol, 'sector': '', 'is_public': 1, 'yf_ticker': yf_symbol})
-        rows[symbol]['yf_ticker'] = rows[symbol].get('yf_ticker') or yf_symbol
+        value = dict(existing) if existing else {'symbol': symbol, 'name': symbol, 'sector': '', 'is_public': 1}
+        if yf_symbol in rows:
+            value['is_public'] = min(value['is_public'], rows[yf_symbol]['is_public'])
+        # Strategy benchmarks always use their fixed source mapping.
+        value.update(symbol=symbol, yf_ticker=yf_symbol)
+        rows[yf_symbol] = value
     return list(rows.values())
+
+
+def insert_assets(conn, run_id, assets):
+    conn.executemany('INSERT INTO run_assets(run_id,symbol,name,sector,yf_ticker,is_public,role) VALUES (?,?,?,?,?,?,?)',
+                     [(run_id, a['symbol'], a['name'], a.get('sector') or '', a['yf_ticker'], a['is_public'],
+                       'benchmark' if a['symbol'] in DEPENDENCIES else 'stock') for a in assets])
 
 
 def enqueue(trigger, now=None, conn=None):
@@ -28,12 +51,13 @@ def enqueue(trigger, now=None, conn=None):
     running = conn.execute("SELECT run_id FROM update_runs WHERE status IN ('queued','running')").fetchone()
     if running:
         return running[0]
+    from lib.universe import seed
+    seed(conn)
     run_id = uuid.uuid4().hex
     assets = dependencies(conn)
     conn.execute('INSERT INTO update_runs(run_id,trigger,target_date,status,created_at,total) VALUES (?,?,?,?,?,?)',
                  (run_id, trigger, completed_session(now), 'queued', stamp(), len(assets)))
-    conn.executemany('INSERT INTO run_assets(run_id,symbol,name,sector,yf_ticker,is_public,role) VALUES (?,?,?,?,?,?,?)',
-                     [(run_id, a['symbol'], a['name'], a.get('sector') or '', a.get('yf_ticker') or a['symbol'].replace('.', '-'), a['is_public'], 'benchmark' if a['symbol'] in DEPENDENCIES else 'stock') for a in assets])
+    insert_assets(conn, run_id, assets)
     return run_id
 
 

@@ -37,9 +37,12 @@ def dashboard_data(batch=None, private=False):
         by_symbol = {a['symbol']:a for a in assets}
         # Pending configurations remain visible independently of strategy matches.
         if batch is None:
-            for r in conn.execute('SELECT * FROM watchlist WHERE enabled=1 ORDER BY symbol'):
+            from lib.jobs import dependencies
+            for r in dependencies(conn):
                 if r['symbol'] not in by_symbol and permitted(conn,r['symbol'],private=private):
-                    assets.append(dict(symbol=r['symbol'],name=r['name'],sector=r['sector'],status='pending',actual_date=None,price=None,change_1d=None,role='stock'))
+                    if not private and not r['is_public']:
+                        continue
+                    assets.append(dict(symbol=r['symbol'],name=r['name'],sector=r['sector'],status='pending',actual_date=None,price=None,change_1d=None,role='benchmark' if r['symbol'] in DEPENDENCIES else 'stock'))
         grouped = {}
         for r in results:
             payload = json.loads(r.pop('payload'))

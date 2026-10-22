@@ -1,0 +1,51 @@
+{
+  "fetched_at": "2026-10-22T01:08:37.563501+00:00",
+  "membership_sources": {
+    "sp500": "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+    "nasdaq100": "https://en.wikipedia.org/wiki/List_of_NASDAQ-100_companies"
+  },
+  "constituent_counts": {
+    "sp500": 503,
+    "nasdaq100": 101
+  },
+  "overlap": 86,
+  "unique_index_stocks": 518,
+  "local_preview": {
+    "personal_rows_preserved": 2,
+    "real_price_rows_unchanged": 3300,
+    "active_assets": 522,
+    "new_pending_index_rows": 516
+  },
+  "fresh_install": {
+    "enabled": true,
+    "counts": {
+      "nasdaq100": 101,
+      "sp500": 503
+    },
+    "unique": 518,
+    "fetched_at": "2026-10-22T01:08:37.563501+00:00",
+    "error": null,
+    "stale": false,
+    "personal_rows": 44,
+    "download_assets": 540,
+    "price_rows": 0
+  },
+  "local_tests": {
+    "passed": 45,
+    "seconds": 93.46
+  },
+  "full_worker_test": {
+    "prices": "SYNTHETIC isolated only",
+    "unique_calls": 523,
+    "daily_results": 2615,
+    "publication": "passed"
+  },
+  "browser": {
+    "desktop_width": 1440,
+    "mobile_width": 360,
+    "mobile_document_width": 345,
+    "mobile_scroll_width": 345,
+    "javascript_errors": 0
+  },
+  "deployment": "No VPS deployment or merge; no full 518-stock Yahoo download claimed"
+}

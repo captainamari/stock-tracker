@@ -39,7 +39,7 @@ def add_ticker(payload: AddTickerRequest):
     with db.get_db() as conn:
         conn.execute('''INSERT INTO watchlist(symbol,name,sector,yf_ticker,is_public,enabled,updated_at)
           VALUES (?,?,?,?,?,1,?) ON CONFLICT(symbol) DO UPDATE SET name=excluded.name,sector=excluded.sector,
-          yf_ticker=excluded.yf_ticker,is_public=excluded.is_public,enabled=1,updated_at=excluded.updated_at''',
+          yf_ticker=excluded.yf_ticker,is_public=excluded.is_public,enabled=1,is_personal=1,updated_at=excluded.updated_at''',
           (payload.symbol, payload.name or payload.symbol, payload.sector, payload.yf_ticker or payload.symbol.replace('.', '-'), int(payload.is_public), stamp()))
     return {'symbol': payload.symbol, 'status': 'pending', 'message': 'Saved; use Update data to collect market data.'}
 

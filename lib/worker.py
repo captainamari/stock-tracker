@@ -22,6 +22,8 @@ def execute(job, provider=download):
     thread = threading.Thread(target=pulse, daemon=True)
     thread.start()
     try:
+        from lib.universe import prepare_run
+        prepare_run(job)
         with db.get_db() as conn:
             assets = [dict(r) for r in conn.execute('SELECT * FROM run_assets WHERE run_id=? ORDER BY role,symbol', (job['run_id'],))]
         for i, asset in enumerate(assets):

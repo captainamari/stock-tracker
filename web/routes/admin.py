@@ -12,5 +12,9 @@ def admin_page(request:Request):
         return render(request,'admin.html')
     with db.get_db() as conn:
         runs=[dict(r) for r in conn.execute('SELECT run_id,target_date,status,stage,completed,total,created_at FROM update_runs ORDER BY created_at DESC LIMIT 20')]
-        watchlist=[dict(r) for r in conn.execute('SELECT symbol,name,enabled,is_public FROM watchlist ORDER BY symbol')]
-    return render(request,'admin.html',dict(runs=runs,watchlist=watchlist))
+        from lib.universe import summary, active_clause
+        universe = summary(conn)
+        watchlist=[dict(r) for r in conn.execute(f'''SELECT w.symbol,w.name,w.enabled,w.is_public,w.is_personal,
+            ({active_clause()}) active, (SELECT GROUP_CONCAT(index_id, ', ') FROM index_memberships m WHERE m.symbol=w.symbol) indices
+            FROM watchlist w ORDER BY symbol''')]
+    return render(request,'admin.html',dict(runs=runs,watchlist=watchlist,universe=universe))

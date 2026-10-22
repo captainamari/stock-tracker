@@ -31,6 +31,8 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app):
     migrate()
+    from lib.universe import initialize
+    initialize()
     yield
 
 # ============================================================

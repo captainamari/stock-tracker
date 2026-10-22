@@ -29,6 +29,8 @@ def main():
         print(restore(args.source,args.destination))
         return
     migrate()
+    from lib.universe import initialize
+    initialize()
     if args.command=='init-admin':
         from web.auth import initialize_admin
         password=getpass.getpass('Administrator password (12+ characters): ')

@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime,timezone
 
 if __name__=='__main__':
+    os.environ['INDEX_UNIVERSE_ENABLED']='false'
     path=Path(os.environ['STOCK_DB'])
     if path.exists():
         raise SystemExit('Use a NEW isolated database; never mix test prices with real prices')

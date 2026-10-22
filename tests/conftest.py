@@ -9,6 +9,7 @@ def database(tmp_path, monkeypatch):
     monkeypatch.setattr(db, 'DB_PATH', path)
     monkeypatch.setenv('STOCK_DB', str(path))
     monkeypatch.setenv('COOKIE_SECURE', 'false')
+    monkeypatch.setenv('INDEX_UNIVERSE_ENABLED', 'false')  # Small deterministic fixtures; universe tests opt in.
     migrate()
     return path
 

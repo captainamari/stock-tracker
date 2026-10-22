@@ -27,6 +27,7 @@ class Settings:
     history_days: int = 800
     revision_lookback_days: int = 45
     lease_seconds: int = 90
+    index_universe_enabled: bool = field(default_factory=lambda: os.getenv('INDEX_UNIVERSE_ENABLED', 'true').lower() == 'true')
     yahoo_min_interval_seconds: float = field(default_factory=lambda: float(os.getenv('YAHOO_MIN_INTERVAL_SECONDS', '5')))
     yahoo_cooldown_seconds: int = field(default_factory=lambda: int(os.getenv('YAHOO_COOLDOWN_SECONDS', '21600')))
     secure_cookies: bool = field(default_factory=lambda: os.getenv('COOKIE_SECURE', 'true').lower() == 'true')

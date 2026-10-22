@@ -92,3 +92,17 @@ The 1.26 million capacity bars are **synthetic and never deployment data**. Only
 | Final acceptance and Yahoo safeguards | a767792c0aa3e5517d94c28b8330bb262ddb2c83 |
 
 Final follow-up and its evidence are included in the same PR; no main merge or production cutover was performed.
+
+## 2026-10-22: combined index universe follow-up
+
+User authorized the S&P 500 + Nasdaq-100 union, deduplicated with existing personal entries and four benchmarks, on the same Draft PR; VPS deployment remains excluded.
+
+- Implemented migration 006, lib/universe.py, bundled source-attributed metadata and worker preparation. Existing rows become personal; membership refresh never overwrites their names/mappings/privacy/disabled state. New index rows are public. API/config additions retain personal ownership. Former index-only rows stop collection without deleting history, and explicit disables survive re-entry.
+- Live metadata fetch: **503 S&P listings + 101 Nasdaq listings − 86 overlaps = 518 unique index stocks**, retrieved **2026-10-22T01:08:37.563501+00:00**. Sources are the public Wikipedia constituent tables recorded in config/index_universe.json, not a licensed official feed. Prices remain exclusively yfinance. Both lists are validated and committed atomically; unexpected structure/count/churn retains the last complete pair.
+- Refresh is due after seven days and runs only within the existing update worker. Failure backs off at least 24 hours. No GET/enqueue network. A run freezes its universe snapshot and symbols before collection; lease recovery reuses the same set. Separate share classes remain separate; same Yahoo ticker aliases collect once.
+- Fresh-install audit preserves all **44 configured personal rows** and produces **540 distinct download assets** including benchmarks, with zero price downloads during initialization.
+- Local preview upgrade audit: original **2 personal rows and 3,300 real price revisions unchanged**, **516 new pending index rows**, **522 next-run assets**. Integrity check passed; pre-change backup retained separately.
+- Regression: python -m pytest -q --basetemp=../test-temp-19 → **45 passed, 1 warning, 93.46 s**. Seven added tests cover union/aliases/benchmarks, personal and disabled retention, departure/re-entry/history preservation, weekly/failed refresh, atomic validation, restart pinning, GET isolation and personal promotion. Full worker integration: **523 unique synthetic provider calls**, **2,615 saved results**, successful publication and private-symbol exclusion from public report.
+- compileall and JS syntax passed; the six-case pinned real hub ASGI contract passed without external sends.
+- Browser: membership panel at 1440px English / 360px Chinese; mobile document and scroll widths both 345px; personal/index-managed admin classification, search and pending prices checked; zero JavaScript errors. Evidence: evidence/index-universe-validation.json and index-universe-{1440,360}.png.
+- No full 518-stock live-price download, VPS deployment, merge or real notification. Existing synthetic capacity figures remain historical performance evidence, not current collection scope. Final follow-up SHA and CI are linked on the same Draft PR.

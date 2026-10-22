@@ -19,6 +19,7 @@ def main():
         raise SystemExit('Refusing to overwrite an existing database')
     os.environ['STOCK_DB']=str(args.database.resolve())
     os.environ['COOKIE_SECURE']='false'
+    os.environ['INDEX_UNIVERSE_ENABLED']='false'  # This database contains only the labeled synthetic pool.
     from lib import db
     from lib.migrations import migrate
     from lib.pipeline import request_update
