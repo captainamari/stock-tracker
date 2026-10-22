@@ -23,7 +23,7 @@ def permitted(conn, symbol, asset=None, private=False):
     return public and (asset is None or bool(asset['is_public']))
 
 
-def dashboard_data(batch=None, private=False):
+def dashboard_data(batch=None, private=False, include_pending=False):
     with db.get_db() as conn:
         conn.execute('BEGIN')
         pub = publication(conn,batch)
@@ -36,7 +36,7 @@ def dashboard_data(batch=None, private=False):
             changes = [dict(r) for r in conn.execute('SELECT * FROM candidate_changes WHERE batch_id=?',(pub['batch_id'],)) if r['symbol'] in stocks]
         by_symbol = {a['symbol']:a for a in assets}
         # Pending configurations remain visible independently of strategy matches.
-        if batch is None:
+        if batch is None or include_pending:
             from lib.jobs import dependencies
             for r in dependencies(conn):
                 if r['symbol'] not in by_symbol and permitted(conn,r['symbol'],private=private):
@@ -49,6 +49,9 @@ def dashboard_data(batch=None, private=False):
             grouped.setdefault(r['symbol'],{})[r['strategy_id']] = {**payload,**r}
         for a in assets:
             a['strategies'] = grouped.get(a['symbol'],{})
+            if private:
+                labels = conn.execute('SELECT is_followed,is_held FROM watchlist WHERE symbol=?', (a['symbol'],)).fetchone()
+                a.update(is_followed=bool(labels and labels[0]), is_held=bool(labels and labels[1]))
             if not private:
                 for key in ('reason','yf_ticker','input_revision','run_id'):
                     a.pop(key,None)
@@ -68,6 +71,11 @@ def ticker_data(symbol,batch=None,private=False):
         if not (row or current) or not permitted(conn,symbol,row,private):
             return None
         asset = dict(row) if row else {**dict(current),'status':'pending','actual_date':None,'price':None,'change_1d':None,'role':'stock'}
+        if private:
+            asset.update(is_followed=bool(current and current['is_followed']), is_held=bool(current and current['is_held']))
+        else:
+            for field in ('is_followed','is_held','is_personal'):
+                asset.pop(field, None)
         prices = read_prices(conn,symbol,pub['target_date'],row['input_revision'] or 0) if row else []
         results = {}
         if row:
@@ -80,11 +88,13 @@ def ticker_data(symbol,batch=None,private=False):
                     asset=asset,prices=prices,strategies=results)
 
 
-def report_data(report_id):
+def report_data(report_id, private=False):
     with db.get_db() as conn:
-        row = conn.execute('SELECT report_id,batch_id,target_date,kind,body,created_at FROM report_snapshots WHERE report_id=? AND public=1',(report_id,)).fetchone()
+        row = conn.execute('SELECT report_id,batch_id,target_date,kind,body,created_at,public FROM report_snapshots WHERE report_id=?',(report_id,)).fetchone()
         if not row:
             return None
+        if not row['public']:
+            return dict(row) if private else None
         # Historical text remains immutable; revoke public access if any formerly
         # public constituent has since been made private.
         hidden = conn.execute('''SELECT 1 FROM run_assets a JOIN watchlist w USING(symbol)

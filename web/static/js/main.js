@@ -82,7 +82,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         stale: t('Stale', '过期'),
         pending: t('Pending', '待更新')
     };
+    let runTimer;
+    let runPage = 1;
+    let inspectedRun = null;
     const showRun = async id => {
+        clearTimeout(runTimer);
+        if (inspectedRun !== id) { runPage = 1; inspectedRun = id; }
         const r = await request(`/api/runs/${id}`);
         const target = document.querySelector('#run-status');
         if (target) target.textContent = `${statusNames[r.status]||r.status} · ${r.completed}/${r.total} · ${r.target_date}`;
@@ -95,13 +100,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         const details = document.querySelector('#run-details');
         if (details) {
             details.replaceChildren();
-            for (const a of r.assets) {
+            const pages = Math.max(1, Math.ceil(r.assets.length / 20));
+            runPage = Math.min(runPage, pages);
+            for (const a of r.assets.slice((runPage - 1) * 20, runPage * 20)) {
                 const p = document.createElement('p');
                 p.textContent = `${a.symbol} · ${statusNames[a.status]||a.status} · ${a.actual_date||'—'}${a.reason?' · '+a.reason:''}`;
                 details.append(p);
             }
         }
-        if (['queued', 'running'].includes(r.status)) setTimeout(() => showRun(id).catch(e => toast(e.message)), 2000);
+            if (details && r.assets.length > 20) {
+                const nav = document.createElement('nav');
+                nav.className = 'pagination';
+                nav.textContent = `${runPage}/${Math.ceil(r.assets.length / 20)} · ${r.assets.length}`;
+                for (const [label, delta] of [[t('Previous', '上一页'), -1], [t('Next', '下一页'), 1]]) {
+                    const button = document.createElement('button');
+                    button.textContent = label;
+                    button.disabled = runPage + delta < 1 || runPage + delta > Math.ceil(r.assets.length / 20);
+                    button.addEventListener('click', safe(async () => { runPage += delta; await showRun(id); }));
+                    nav.append(button);
+                }
+                details.append(nav);
+            }
+        if (['queued', 'running'].includes(r.status)) runTimer = setTimeout(() => showRun(id).catch(e => toast(e.message)), 2000);
         else {
             localStorage.removeItem('stock-update-run');
             document.querySelector('#update-data')?.removeAttribute('disabled');
@@ -122,13 +142,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     }));
     if (auth?.authenticated && document.querySelector('#run-status') && localStorage.getItem('stock-update-run')) showRun(localStorage.getItem('stock-update-run')).catch(e => toast(e.message));
     document.querySelectorAll('.inspect-run').forEach(button => button.addEventListener('click', safe(() => showRun(button.dataset.run))));
-    document.querySelector('#search')?.addEventListener('input', event => document.querySelectorAll('#watch-table tbody tr').forEach(row => row.hidden = !row.textContent.toLowerCase().includes(event.target.value.toLowerCase())));
-    document.querySelector('#sort')?.addEventListener('change', event => {
-        const body = document.querySelector('#watch-table tbody');
-        const rows = [...body.rows];
-        rows.sort(event.target.value === 'price' ? (a, b) => Number(b.dataset.price) - Number(a.dataset.price) : (a, b) => (a.dataset.symbol || '').localeCompare(b.dataset.symbol || ''));
-        rows.forEach(row => body.append(row));
+    document.querySelectorAll('.interest').forEach(button => button.addEventListener('click', safe(async () => {
+        await request('/api/interests', 'PATCH', {symbols: [button.dataset.symbol], [button.dataset.field]: button.dataset.value !== '1'});
+        location.reload();
+    })));
+    document.querySelector('#select-page')?.addEventListener('change', event => {
+        document.querySelectorAll('.select-symbol').forEach(el => el.checked = event.target.checked);
     });
+    document.querySelector('#apply-labels')?.addEventListener('click', safe(async () => {
+        const symbols = [...document.querySelectorAll('.select-symbol:checked')].map(el => el.value);
+        if (!symbols.length) throw Error(t('Select at least one stock.', '请先选择股票。'));
+        const [field, value] = document.querySelector('#bulk-label').value.split(':');
+        await request('/api/interests', 'PATCH', {symbols, [field]: value === '1'});
+        location.reload();
+    }));
     const chart = document.querySelector('#price-chart');
     if (chart && window.Chart) {
         const rows = JSON.parse(document.querySelector('#chart-data').textContent);
@@ -196,8 +223,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         resolved: t('Resolved without resend', '已处理，未重发'),
         sending: t('Sending', '发送中')
     };
+    let deliveryPage = 1;
     const deliveries = async () => {
-        const rows = await request('/api/notifications');
+        const pager = await request('/api/notifications?page=' + deliveryPage);
+        const rows = pager.items;
+        deliveryPage = pager.page;
         const el = document.querySelector('#deliveries');
         el.replaceChildren();
         for (const r of rows) {
@@ -228,12 +258,23 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             el.append(row);
         }
+        const nav = document.createElement('nav');
+        nav.className = 'pagination';
+        nav.textContent = `${pager.start}–${pager.end} / ${pager.total}`;
+        for (const [label, delta] of [[t('Previous', '上一页'), -1], [t('Next', '下一页'), 1]]) {
+            const button = document.createElement('button');
+            button.textContent = label;
+            button.disabled = deliveryPage + delta < 1 || deliveryPage + delta > pager.pages;
+            button.addEventListener('click', safe(async () => { deliveryPage += delta; await deliveries(); }));
+            nav.append(button);
+        }
+        el.append(nav);
         if (!rows.length) el.textContent = t('No deliveries yet.', '暂无投递记录。');
     };
     if (schedule && auth?.authenticated) {
         try {
             const s = await request('/api/settings');
-            for (const key of ['update_time', 'notify_time', 'channel']) schedule.elements[key].value = s[key];
+            for (const key of ['update_time', 'notify_time', 'channel', 'report_scope', 'report_mode']) schedule.elements[key].value = s[key];
             schedule.enabled.checked = s.enabled;
             document.querySelector('#hub-config').textContent = s.hub_configured ? t('Hub connection configured.', '已配置 Hub 连接。') : t('Hub credentials are not configured on the server.', '服务器尚未配置 Hub 凭据。');
             await deliveries();
@@ -245,9 +286,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 update_time: schedule.update_time.value,
                 notify_time: schedule.notify_time.value,
                 channel: schedule.channel.value,
+                report_scope: schedule.report_scope.value,
+                report_mode: schedule.report_mode.value,
                 enabled: schedule.enabled.checked
             });
             toast(t('Saved. No message sent.', '已保存，未发送消息。'));
+        }));
+        document.querySelector('#preview-notification').addEventListener('click', safe(async () => {
+            const query = new URLSearchParams({scope: schedule.report_scope.value, mode: schedule.report_mode.value});
+            const result = await request('/api/notifications/preview?' + query);
+            const preview = document.querySelector('#notification-preview');
+            preview.textContent = result.parts.map((part, index) => `[${index + 1}/${result.count}]\n${part}`).join('\n\n────────\n\n');
+            preview.hidden = false;
         }));
         document.querySelector('#test-notification').addEventListener('click', safe(async () => {
             if (!confirm(t('Send a test message through the configured hub channel?', '通过已配置的 Hub 渠道发送一条测试消息？'))) return;

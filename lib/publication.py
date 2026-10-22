@@ -68,5 +68,8 @@ def publish(job):
             transition(conn,job['run_id'],row,row['price'])
         body = report_body(conn,job['run_id'],job['target_date'],pulse)
         conn.execute('INSERT INTO report_snapshots VALUES (?,?,?,?,?,?,1)',(job['run_id'],job['run_id'],job['target_date'],'daily',body,now))
+        from lib.daily_reports import build_document, store_document, freeze_private
+        store_document(conn, build_document(conn, job['run_id'], job['target_date'], pulse, 'all'))
+        freeze_private(conn, job['run_id'], job['target_date'], pulse)
         conn.execute('INSERT INTO current_publication VALUES (1,?) ON CONFLICT(id) DO UPDATE SET batch_id=excluded.batch_id',(job['run_id'],))
         conn.execute("UPDATE update_runs SET status='published',stage='complete',finished_at=? WHERE run_id=?",(now,job['run_id']))

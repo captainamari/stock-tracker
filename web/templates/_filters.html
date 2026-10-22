@@ -1,0 +1,9 @@
+<form class="toolbar list-filters" method="get">
+<input type="hidden" name="lang" value="{{lang}}">{% if batch_id %}<input type="hidden" name="batch" value="{{batch_id}}">{% endif %}
+{% if admin and (not document or document.scope!='all') %}<label>{{t('Scope','范围')}} <select name="scope">{% for key,en,zh in [('all','All visible','全部可见'),('following','Following','我关注的'),('held','Held','我持有的'),('personal','Following or held','关注或持有')] %}<option value="{{key}}" {{'selected' if filters.scope==key}}>{{t(en,zh)}}</option>{% endfor %}</select></label>{% endif %}
+<label>{{t('Search','搜索')}} <input name="search" value="{{filters.search}}" placeholder="{{t('Symbol or name','代码或名称')}}" maxlength="100"></label>
+{% if not management %}<label>{{t('Strategy','策略')}} <select name="strategy"><option value="">{{t('All','全部')}}</option>{% for key,name in names.items() %}<option value="{{key}}" {{'selected' if filters.strategy==key}}>{{name}}</option>{% endfor %}</select></label>
+<label>{{t('State','状态')}} <select name="match">{% for key,en,zh in [('all','All','全部'),('matched','Matched','匹配'),('near','Near','接近达标')] %}<option value="{{key}}" {{'selected' if filters.match==key}}>{{t(en,zh)}}</option>{% endfor %}{% if document %}<option value="changed" {{'selected' if filters.match=='changed'}}>{{t('Changed today','今日变化')}}</option>{% endif %}</select></label>
+<label>{{t('Sort','排序')}} <select name="sort">{% for key,en,zh in [('symbol','Symbol','代码'),('price','Price ↓','价格 ↓'),('change','Daily change ↓','日涨跌幅 ↓'),('score','Strategy score ↓','所选策略评分 ↓')] %}<option value="{{key}}" {{'selected' if filters.sort==key}}>{{t(en,zh)}}</option>{% endfor %}</select></label>
+{% endif %}<label>{{t('Per page','每页')}} <select name="size">{% for size in [20,50,100] %}<option {{'selected' if pager.size==size}}>{{size}}</option>{% endfor %}</select></label><button>{{t('Apply','筛选')}}</button>
+</form>

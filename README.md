@@ -66,3 +66,16 @@ Yahoo 请求默认顺序执行、每次 history 调用间隔至少 5 秒；限�
 worker 在完整名单满七天后的下一次更新开始前检查两份公开成分股表。获取或校验失败保留上次完整名单，至少 24 小时后重试；页面和 GET API 不访问名单或行情源。每个任务在采集前固定名单，进程重启继续使用同一范围。退出指数且非个人保留的股票停止采集，历史行情和日报不删除；主动停用的股票不会被刷新重新启用。
 
 观察池与管理页显示名单数量、获取时间及刷新异常，管理页区分个人与指数维护条目。INDEX_UNIVERSE_ENABLED=false 可仅采集个人观察池和四个基准，不删除历史。本次配置完成后新增股票仍为“待更新”，并不表示已下载 518 只股票的真实行情。
+## 个人标签、分页与日报
+
+观察池与管理页默认每页 20 条，可切换 50 / 100 条。搜索、关注/持有范围及策略筛选作用于完整结果后再分页；链接保留筛选和行情批次。概览每个策略最多展示五项，点击“查看全部”进入筛选后的观察池。更新记录、单次任务进度及通知记录也支持分页。
+
+登录后可独立设置“关注”和“持有”，也可选择本页股票批量修改。标记只向管理员显示，与公开/私人可见性独立。取消标记不会停用采集；标记一个指数成分股会将其保留为个人条目，退出指数后仍可采集。首次升级将已有个人条目设为关注，持有默认留空；以后启动不会重置个人选择。新安装的配置条目和手动添加的股票默认关注。
+
+每次成功更新同时冻结公开、关注、持有、关注或持有四份日报。网页先展示市场背景、确认变化和数据异常，再展示可筛选分页的个股行情/四策略矩阵、20个交易日收盘价小图（缺失日留空）及可展开的条件解释。日报保存生成时的名单和标记，历史不会随当前名单编辑而改变；私人日报需要管理员登录。旧版报告仍按原文本读取，升级后第一次更新才生成新的个人日报，不根据今天的持仓追补旧名单。
+
+管理员“通知计划”可选择关注、持有或二者并集，默认并集；标准版包含全部行情及匹配/接近策略详情，精简版每个策略最多五项，持有优先。通知参考 v1 的分组、条件进度条、评分、均线及未满足条件说明，通过现有 Hub 发送纯文本。页面中的“预览，不发送”只读取目标交易日已保存快照，不下载行情、不计算策略、不创建投递。保存通知设置也不会立即发送。
+
+前一交易日缺失或评估失败时，日报不会确认新增/退出或展示虚假的前后分数差异；行情异常和策略输入不足分别标记。分数不是胜率；收缩不代表已突破；Checklist 周线包含本周暂态。目标日没有所选范围日报时发送缺失摘要，不替换为公开池或旧日报。既有队列的内容保持冻结，通知的去重与不确定投递处理规则不变。
+
+English: lists paginate after filtering the full visible collection (20/50/100). Private Following/Held labels are independent of public visibility and collection enablement. Successful publications freeze public and three personal report scopes; personal reports require sign-in. Existing personal rows migrate to Following once, never inferred Held. Notification preferences select scope and standard/compact detail. Preview is read-only and never queues delivery. v1-inspired plain text works with the existing notification-hub contract; no hub upgrade is required. Historical legacy reports remain text, with personal snapshots starting on the next update. No deployment is performed by this change.
