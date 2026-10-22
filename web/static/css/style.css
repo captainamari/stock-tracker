@@ -271,6 +271,11 @@ main {
     background: #ebf4ef
 }
 
+.badge.near {
+    background: #f6eddb;
+    color: #80551f
+}
+
 .badge.failed,
 .badge.stale,
 .badge.insufficient_data,

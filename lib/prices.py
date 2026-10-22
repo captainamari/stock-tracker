@@ -90,10 +90,12 @@ def collect_asset(job, asset, provider=download):
     with db.get_db() as conn:
         old = read_prices(conn, asset['symbol'], target)
     floor = str(date.fromisoformat(target)-timedelta(days=cfg.history_days))
-    recent = str(date.fromisoformat(target)-timedelta(days=cfg.revision_lookback_days))
     relevant = [r for r in old if r['date'] >= floor]
-    holes = set(sessions(relevant[0]['date'], target)) - {r['date'] for r in relevant if r['quality']=='valid'} if relevant else set()
-    start = floor if len(relevant) < 252 or holes else max(floor, recent)
+    # Missing sessions AFTER the last stored bar are the increment to fetch,
+    # not historical holes. A short but contiguous IPO history is also reusable.
+    holes = set(sessions(relevant[0]['date'], relevant[-1]['date'])) - {r['date'] for r in relevant if r['quality']=='valid'} if relevant else set()
+    # Keep one saved session in the request to detect changes in adjusted OHLC.
+    start = floor if not relevant or holes else relevant[-1]['date']
     try:
         raw = provider(asset['yf_ticker'], start, target)
         rows = normalize(raw, target)
@@ -102,12 +104,25 @@ def collect_asset(job, asset, provider=download):
         old_by_date = {r['date']: r for r in old}
         # Adjusted history revisions or corporate actions require a full window,
         # never splice differently adjusted old and new portions.
-        revised = any(r['date'] in old_by_date and old_by_date[r['date']]['close'] is not None and r['close'] is not None and
-                      not math.isclose(r['close'], old_by_date[r['date']]['close'], rel_tol=1e-7, abs_tol=1e-7) for r in rows)
-        action = any((raw[k].fillna(0) != 0).any() for k in ('Stock Splits','Dividends') if k in raw)
-        if start != floor and (revised or action):
-            rows = normalize(provider(asset['yf_ticker'], floor, target), target)
-            start = floor
+        revised = any(r['date'] in old_by_date and any(
+            old_by_date[r['date']][key] is not None and r[key] is not None and
+            not math.isclose(r[key], old_by_date[r['date']][key], rel_tol=1e-7, abs_tol=1e-7)
+            for key in ('open', 'high', 'low', 'close')) for r in rows)
+        returned = {r['date'] for r in rows}
+        # Repeatedly seeing an already incorporated action on the overlap day
+        # must not cause full downloads on every same-day rerun. Late revisions
+        # on that day are caught by the adjusted OHLC comparison above.
+        latest = old[-1]['date'] if old else ''
+        action = any(idx.date().isoformat() in returned and idx.date().isoformat() > latest and
+                     any(pd.notna(row.get(k)) and row.get(k) != 0 for k in ('Stock Splits', 'Dividends') if k in raw)
+                     for idx, row in raw.iterrows())
+        omitted = any(start <= r['date'] <= target and r['date'] not in returned for r in old)
+        # A corporate action can revise even bars older than the rolling window.
+        # Refresh those too, rather than splice new adjusted bars onto old ones.
+        backfill_start = min(floor, old[0]['date']) if old and (revised or action) else floor
+        if (revised or action or omitted) and start > backfill_start:
+            rows = normalize(provider(asset['yf_ticker'], backfill_start, target), target)
+            start = backfill_start
             if not rows:
                 raise ValueError('Full revision recollection returned no bars')
         # An omitted previously known source day is an explicit tombstone, not

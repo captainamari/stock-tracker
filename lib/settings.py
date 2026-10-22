@@ -25,7 +25,6 @@ class Settings:
     update_time: str = '04:00'
     notify_time: str = '06:00'
     history_days: int = 800
-    revision_lookback_days: int = 45
     lease_seconds: int = 90
     index_universe_enabled: bool = field(default_factory=lambda: os.getenv('INDEX_UNIVERSE_ENABLED', 'true').lower() == 'true')
     yahoo_min_interval_seconds: float = field(default_factory=lambda: float(os.getenv('YAHOO_MIN_INTERVAL_SECONDS', '5')))
