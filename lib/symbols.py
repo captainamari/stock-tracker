@@ -21,7 +21,7 @@ def normalize(values):
     return result
 
 
-def resolve(conn, values):
+def resolve(conn, values, public=False):
     """Resolve aliases to the same canonical row used by collection."""
     from lib.jobs import dependencies
     mapping = {}
@@ -31,4 +31,13 @@ def resolve(conn, values):
     for row in dependencies(conn):
         mapping[yahoo_symbol(row['symbol'])] = row['symbol']
         mapping[yahoo_symbol(row['yf_ticker'])] = row['symbol']
-    return list(dict.fromkeys(mapping.get(s, s) for s in normalize(values)))
+    def canonical(symbol):
+        resolved = mapping.get(symbol, symbol)
+        if public:
+            from lib.queries import permitted
+            if not permitted(conn, resolved):
+                # An unavailable placeholder must not disclose a private alias
+                # that the visitor did not supply in the request.
+                return symbol
+        return resolved
+    return list(dict.fromkeys(canonical(s) for s in normalize(values)))

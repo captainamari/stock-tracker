@@ -30,7 +30,7 @@ def summary(batch=None):
 def collection(batch=None, symbols=None, report_id=None, **filters):
     with db.get_db() as conn:
         conn.execute('BEGIN')
-        chosen = resolve(conn, symbols) if symbols is not None else None
+        chosen = resolve(conn, symbols, public=True) if symbols is not None else None
         if report_id:
             row = conn.execute('''SELECT r.*,d.payload FROM report_snapshots r
                 LEFT JOIN report_documents d USING(report_id) WHERE r.report_id=? AND r.public=1''', (report_id,)).fetchone()

@@ -249,6 +249,9 @@ def test_fresh_defaults_are_public_and_private_alias_revokes_history(database,cl
     assert report_data(run) is not None
     db.upsert_watchlist([dict(symbol='PRIVATEALIAS',name='Secret',yf_ticker='BRK-B')])
     assert client.get('/api/ticker/BRK.B',params={'batch':run}).status_code==404
+    response=client.get('/api/assets',params={'symbols':'BRK-B','batch':run})
+    assert response.json()['items'][0]['symbol']=='BRK-B'
+    assert 'PRIVATEALIAS' not in response.text
     # Legacy plain text cannot safely remove a revoked alias; withhold the text.
     with db.get_db() as conn:conn.execute('DELETE FROM report_documents WHERE report_id=?',(run,))
     assert client.get('/reports/'+run).status_code==404
