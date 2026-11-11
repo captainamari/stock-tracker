@@ -1,0 +1,23 @@
+[Unit]
+Description=Stock Tracker independent owner daily report
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=stock-tracker
+Group=stock-tracker
+WorkingDirectory=/opt/stock-tracker
+EnvironmentFile=/etc/stock-tracker/runtime.env
+Environment=STOCK_DB=/var/lib/stock-tracker/stock_tracker.db
+ExecStart=/opt/stock-tracker/.venv/bin/python -m scripts.send_daily_report --config /etc/stock-tracker/daily-report.json
+SuccessExitStatus=3
+TimeoutStartSec=20min
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/stock-tracker
+StandardOutput=journal
+StandardError=journal

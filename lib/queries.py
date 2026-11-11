@@ -20,6 +20,15 @@ def permitted(conn, symbol, asset=None, private=False):
         return True
     current = conn.execute('SELECT is_public,enabled FROM watchlist WHERE symbol=?',(symbol,)).fetchone()
     public = bool(current and current['is_public'] and current['enabled']) if current else symbol in DEPENDENCIES
+    # Revocation applies to every spelling of the same security, including old
+    # publications whose canonical display symbol predates an alias configuration.
+    mapping = conn.execute('SELECT COALESCE(yf_ticker,symbol) FROM watchlist WHERE symbol=?',(symbol,)).fetchone()
+    from lib.universe import yahoo_symbol
+    yahoo = yahoo_symbol(mapping[0] if mapping else symbol)
+    hidden_alias = conn.execute('''SELECT 1 FROM watchlist WHERE is_public=0 AND
+        UPPER(REPLACE(COALESCE(yf_ticker,symbol),'.','-'))=? LIMIT 1''',(yahoo,)).fetchone()
+    if hidden_alias:
+        return False
     return public and (asset is None or bool(asset['is_public']))
 
 
@@ -68,9 +77,9 @@ def ticker_data(symbol,batch=None,private=False):
         pub = publication(conn,batch)
         row = conn.execute('SELECT * FROM run_assets WHERE run_id=? AND symbol=?',(pub['batch_id'],symbol)).fetchone() if pub else None
         current = conn.execute('SELECT * FROM watchlist WHERE symbol=?',(symbol,)).fetchone()
-        if not (row or current) or not permitted(conn,symbol,row,private):
+        if not (row or current or symbol in DEPENDENCIES) or not permitted(conn,symbol,row,private):
             return None
-        asset = dict(row) if row else {**dict(current),'status':'pending','actual_date':None,'price':None,'change_1d':None,'role':'stock'}
+        asset = dict(row) if row else {**(dict(current) if current else dict(symbol=symbol,name=symbol)),'status':'pending','actual_date':None,'price':None,'change_1d':None,'role':'benchmark' if symbol in DEPENDENCIES else 'stock'}
         if private:
             asset.update(is_followed=bool(current and current['is_followed']), is_held=bool(current and current['is_held']))
         else:

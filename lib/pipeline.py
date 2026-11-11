@@ -1,4 +1,4 @@
-"""One update entrypoint, shared by the scheduler and administrator endpoint."""
+"""One update entrypoint, shared by the scheduler and server CLI."""
 import re
 from lib.jobs import enqueue
 

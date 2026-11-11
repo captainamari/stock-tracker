@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "profile": "owner",
+  "symbols": ["NVDA", "MSFT", "GOOG", "INTC"],
+  "channel": "trading",
+  "mode": "compact"
+}

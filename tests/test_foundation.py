@@ -21,21 +21,18 @@ def test_backup_restore_preserves_legacy(database, tmp_path):
 
 @pytest.mark.parametrize('method,path', [('post','/api/tickers'), ('delete','/api/tickers/AAA'), ('post','/api/prices/refresh'), ('post','/api/settings'), ('post','/api/notifications/test')])
 def test_anonymous_writes_rejected(client, method, path):
-    assert getattr(client, method)(path).status_code == 401
+    assert getattr(client, method)(path).status_code == 404
 
 
-def test_csrf_and_sessions(admin):
-    csrf = admin.headers.pop('x-csrf-token')
-    assert admin.post('/api/prices/refresh').status_code == 403
-    admin.headers['x-csrf-token'] = csrf
-    assert admin.post('/api/auth/logout').status_code == 200
-    assert admin.post('/api/prices/refresh').status_code == 401
+def test_old_cookies_do_not_restore_management(client):
+    client.cookies.set('session','legacy-session')
+    assert client.post('/api/prices/refresh').status_code==404
+    assert client.post('/api/auth/logout').status_code==404
+    assert client.get('/api/auth/session').status_code==404
 
 
-def test_login_rate_limit(client):
-    from web.auth import initialize_admin
-    initialize_admin('isolated-test-password')
-    csrf = client.get('/api/auth/session').json()['csrf']
-    for _ in range(5):
-        assert client.post('/api/auth/login', json={'password':'wrong'}, headers={'x-csrf-token':csrf}).status_code == 401
-    assert client.post('/api/auth/login', json={'password':'wrong'}, headers={'x-csrf-token':csrf}).status_code == 429
+
+def test_login_routes_removed(client):
+    assert client.get('/admin').status_code==404
+    assert client.post('/api/auth/login',json={'password':'anything'}).status_code==404
+    assert '/admin' not in client.get('/').text

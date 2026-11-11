@@ -32,7 +32,7 @@ def report_body(conn, batch, target, pulse):
     lines = [f'Stock Tracker · 行情日期 / Market date {target}',
              f'行情缺失/失败 Missing/failed: {missing}/{len(assets)}; 策略不可计算 unavailable: {strategy_missing}',
              f'市场背景 Market context: {pulse["regime"] or "数据不足 / insufficient data"}',
-             f'公开观察池宽度 Public watchlist breadth: {pulse["breadth"].get("stage2_count",0)}/{pulse["breadth"].get("analyzed",0)} assessed (not whole market)']
+             f'指数并集宽度 Index union breadth: {pulse["breadth"].get("stage2_count",0)}/{pulse["breadth"].get("analyzed",0)} assessed; expected {pulse["breadth"].get("total",0)}; missing {pulse["breadth"].get("missing",0)}']
     names = dict(zip(STRATEGIES, ('Stage2','收缩候选 / Contraction candidates','逆势观察 / Bottom Fisher','Checklist (score ≠ win probability)')))
     for strategy in STRATEGIES:
         matches = [r['symbol'] for r in rows if r['strategy_id']==strategy and r['status']=='ok' and r['is_signal']]

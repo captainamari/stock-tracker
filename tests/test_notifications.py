@@ -12,34 +12,22 @@ def enable():
     save_schedule(dict(update_time='04:00',notify_time='06:00',channel='trading',enabled=True))
 
 
-def test_due_time_dst_holiday_and_missing_report(database):
+def test_scheduler_only_updates_even_with_legacy_notifications_enabled(database):
     enable()
-    # NYC 05:59 EDT: update due, notify not due.
     assert [x[0] for x in tick(datetime(2026,10,21,9,59,tzinfo=timezone.utc))]==['update']
-    assert [x[0] for x in tick(datetime(2026,10,21,10,tzinfo=timezone.utc))]==['notify']
-    assert tick(datetime(2026,10,21,11,tzinfo=timezone.utc))==[]
+    assert tick(datetime(2026,10,21,10,tzinfo=timezone.utc))==[]
     assert tick(datetime(2026,12,25,12,tzinfo=timezone.utc))==[]
-    with db.get_db() as conn:
-        report=dict(conn.execute("SELECT * FROM report_snapshots WHERE kind='missing'").fetchone())
-    assert report['target_date']=='2026-10-20' and 'Delayed or missing' in report['body']
-    assert not any(x[0]=='notify' for x in tick(datetime(2026,11,2,10,59,tzinfo=timezone.utc)))
-    assert any(x[0]=='notify' for x in tick(datetime(2026,11,2,11,tzinfo=timezone.utc)))
-
-
-def test_schedule_save_does_not_send_and_no_late_resend(admin):
-    payload=dict(update_time='04:00',notify_time='06:00',channel='trading',enabled=True)
-    assert admin.put('/api/settings',json=payload).status_code==200
+    assert not any(x[0]=='notify' for x in tick(datetime(2026,11,2,11,tzinfo=timezone.utc)))
     assert delivery.list_deliveries()==[]
+
+
+
+def test_schedule_and_updates_never_queue_notifications(database):
+    enable()
+    seed_watchlist();update()
     tick(datetime(2026,10,21,10,tzinfo=timezone.utc))
-    queued=delivery.list_deliveries()[0]['delivery_id']
-    seed_watchlist()
-    # Scheduler has already queued the same update scope.
-    update()
-    tick(datetime(2026,10,21,12,tzinfo=timezone.utc))
-    assert len(delivery.list_deliveries())==1
-    with db.get_db() as conn:
-        snapshot=conn.execute('SELECT r.kind FROM deliveries d JOIN report_snapshots r USING(report_id) WHERE d.delivery_id=?',(queued,)).fetchone()[0]
-    assert snapshot=='missing'
+    assert delivery.list_deliveries()==[]
+
 
 
 def test_hub_adapter_receipts_and_no_blind_retry(database,monkeypatch):

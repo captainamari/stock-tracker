@@ -1,138 +1,157 @@
-# 运行、迁移与恢复
+# 部署、升级与回滚
 
-本文件描述 S0–S4 可运行配置；不代表已执行生产部署。旧 `DEPLOY_QA.md` 中旧版流水线说明仅供历史参考，以本文件为准。
+本说明对应免登录网站与独立日报版本。部署与真实通知须由所有者另行执行；本次代码改造不操作 VPS。英文用户可参考 README_EN 与下面的命令、退出码和路径。
 
-## 进程与配置
+## 进程与权限
 
-使用 Python 3.12。`web`、`worker`、`scheduler`、`notify-worker` 必须共享同一个本地 SQLite 文件/卷，不能放网络文件系统。SQLite WAL 允许网页读取与短写事务并行；网络下载和计算不持有写锁。worker 使用租约、心跳及写入 fencing，中断后新进程等待租约到期接管。最多一个活跃行情任务；多个进程不能绕过唯一约束。
+Python 3.12；`web`、行情 `worker`、行情 `scheduler` 与独立日报脚本共享**同一个本地盘 SQLite WAL**，使用相同账号或兼容权限。不要使用网络文件系统。保留现有数据库绝对路径、卷名称、Yahoo 限流配置及实际更新时间，不新建空库替换旧库。
 
-原生启动见 README。环境变量集中于 `lib/settings.py`；管理页计划存于数据库。配置 `DISPLAY_TIMEZONE`、HTTPS 下 `COOKIE_SECURE=true`、正确 `PUBLIC_URL`。不要把 token 放 URL、前端或公开日志。原生启动不会自动读取 `.env`，需由服务管理器注入环境。
+原生部署推荐目录：代码 `/opt/stock-tracker`，虚拟环境 `/opt/stock-tracker/.venv`，数据库 `/var/lib/stock-tracker/stock_tracker.db`，私有环境 `/etc/stock-tracker/runtime.env`，私有日报配置 `/etc/stock-tracker/daily-report.json`，账号/组 `stock-tracker`。数据库目录必须可写以创建 WAL/SHM；私有配置建议0640，仅服务账号可读。仓库示例不包含凭据。
 
-新安装 Docker Compose（以下命令仅供操作手册，本次未在 VPS 执行）：
+原生进程不自动加载 `.env`；由 systemd `EnvironmentFile` 注入。示例环境：
 
-```sh
-cp .env.example .env
-# 编辑 .env 的 URL / cookie / 可选 hub 连接；不要提交凭据
-docker compose build
-docker compose run --rm web python -m lib.cli init
-docker compose run --rm -it web python -m lib.cli init-admin
-docker compose up -d
+```ini
+STOCK_DB=/var/lib/stock-tracker/stock_tracker.db
+PUBLIC_URL=https://stocks.example.com
+DISPLAY_TIMEZONE=Asia/Shanghai
+INDEX_UNIVERSE_ENABLED=true
+NOTIFICATION_API_URL=https://notify.watchpoint.space
+NOTIFICATION_API_TOKEN=<服务器私有凭据>
+YAHOO_MIN_INTERVAL_SECONDS=5
+YAHOO_COOLDOWN_SECONDS=21600
 ```
 
-仅绑定 `127.0.0.1:8000`；公开访问应经 HTTPS 反向代理。同一个数据卷保留原项目名，迁移时核实真实 volume 名称，不要误建空卷。初始化管理员交互输入密码，不能覆盖既有管理员。可选首次配置种子 `docker compose run --rm web python -m lib.cli seed-watchlist`（默认私人）。通过网页维护配置、执行更新。worker、scheduler、notify-worker 使用同一镜像且独立重启。
+公开 HTTP 没有登录/退出/管理员导航，原认证、采集增删、标签/可见性修改、手动更新、通知设置、预览、测试发送、重试/确认接口均不再挂载，旧 cookie 也不能访问。不存在公网管理 token 或隐藏管理 URL。语言 cookie 可保留。数据库认证表保留用于备份和回滚，不清除原账号数据。
 
-## 从旧版本切换前
+Docker Compose 仅启动 web、worker、scheduler 三个服务。沿用真实卷名，不要变更 Compose project 导致误挂空卷。必须先 `docker compose run --rm web python -m lib.cli init`，然后启动三进程。旧 `notify-worker` 必须显式停止并删除旧容器，不能因服务从 Compose 文件消失就假定它已停止。若采用下面原生 systemd 日报，请将 `STOCK_DB` 映射到**相同实际本地数据目录**，核对 uid/gid；不要把容器内 `/app/data/...` 直接当宿主机路径。无需引入第四个常驻通知容器。
 
-1. 记录当前镜像/提交、真实数据库路径、volume 名称及 cron/systemd 定时项。停止旧写任务和旧直接 Telegram 计划；旧 `daily_pipeline.py`、`daily_update.sh`、采集和部署脚本在新代码中明确退出，不能继续安装旧 cron。
-2. 停止写进程，使用下面的 SQLite backup API 备份到新路径，保留生产 DB、CSV、历史记录；恢复副本并检查完整性。
-3. 在副本运行 `python -m lib.cli init`，检查 `schema_migrations` 和旧行数。迁移为增量事务，保留旧表，来源不明标记 `legacy_unknown`；仅新统一采集结果会成为已验证发布。
-4. 验证副本登录、观察池隐私、完整范围导出、一次小池更新，再安排生产切换窗口。新启动只保留 Compose scheduler 或对应常驻服务，不能同时保留旧 cron。
-5. 生产 DB 升级前做新备份。失败时停全部写进程，将备份恢复到另一新路径，先核实，再显式切换 `STOCK_DB`/卷挂载并使用对应旧版本。工具不会原地覆盖数据库。
+## 升级步骤
 
-## 一致性备份与恢复
+1. 记录当前提交/镜像、真实 STOCK_DB、卷名、环境文件、采集时间、旧 cron/systemd/Compose 服务。保留配置备份。停止旧通知 scheduler/worker 后核对未完成投递，避免切换期间发送。安排短暂停止行情写入，以便升级与回滚检查。
+2. 使用 SQLite backup API 创建一致性备份，不能只复制活跃 `.db`。恢复到新隔离路径并检查：
+
+   ```sh
+   export STOCK_DB=/actual/existing/stock_tracker.db
+   python -m lib.cli backup /safe/stock-before-guest.db
+   python -m lib.cli restore /safe/stock-before-guest.db /isolated/upgrade-check.db
+   export STOCK_DB=/isolated/upgrade-check.db
+   python -m lib.cli init
+   python -m lib.cli assets
+   python -m lib.cli deliveries
+   ```
+
+   `backup` 和 `restore` 拒绝覆盖目标；restore 执行 integrity_check。历史行情、输入修订、公开/私人边界、报告和投递均保留。008 为加法迁移：`digest_runs` 防重表与任务 `universe_status` 字段；重复执行跳过已应用版本，不改写旧快照或旧广度标签。
+3. 对隔离副本检查后，才在维护窗口对真实 STOCK_DB 执行相同 `init`。新安装公开默认九只；已有私人/停用配置保持原样。`assets` 输出默认冲突清单，审核后仅显式调整需要的标的，例如 `python -m lib.cli asset-public AAPL`；若原本停用，是否 `asset-enable AAPL` 也由所有者决定。不得批量公开历史私人标的。
+4. 导出旧关注/持有配置，不启动发送：
+
+   ```sh
+   python -m lib.cli export-digest --scope personal --output /etc/stock-tracker/daily-report.json
+   # --scope 可为 following / held / personal；personal 是二者并集
+   ```
+
+   输出目标必须不存在。检查名单、顺序、profile、渠道和 mode；可改用 `config/daily-report.example.json` 自定义。空名单必须人工填写。配置仅允许 version/profile/symbols/channel/mode，version=1，最多100个代码，去重保序；mode 为 standard/compact。未覆盖的代码明确报错，单独用 `asset-add` 加入后再安排行情更新。配置导出不会改变每个访客的收藏，不启用定时任务。
+5. 在真实发送前预览（只读，无 Hub/队列/报告/行情/调度写入）：
+
+   ```sh
+   python -m scripts.send_daily_report --config /etc/stock-tracker/daily-report.json --dry-run
+   python -m scripts.send_daily_report --config /etc/stock-tracker/daily-report.json --date 2026-10-20 --dry-run
+   ```
+
+6. 确认旧应用通知入口已关闭：本版本 `scheduler` 只调度行情，即使旧数据库 `enabled=true` 也不会排队通知。停用旧 `notify-worker`、通知 cron/旧 systemd；不要删除 `deliveries`/`delivery_parts`。用 `deliveries` 核查遗留 queued、retryable、sending、unknown、partial：新脚本不会顺手消费这些任务。核对后显式 retry 或 confirm，保留记录。重启新版 web/worker/scheduler，保留行情调度。
+7. 所有者按下一节安装新 timer，检查状态与日志。不要同时安装 cron；本交付只提供 systemd 调度一种方案。没有 `update && send`，也没有更新成功回调。
+
+## 独立 systemd 日报
+
+文件：`deploy/stock-tracker-digest.service` 与 `deploy/stock-tracker-digest.timer`。检查实际 WorkingDirectory、Python 路径、User/Group、EnvironmentFile、STOCK_DB、ReadWritePaths 和 JSON 路径后再安装。服务中显式 STOCK_DB 与现有行情进程必须一致；私有环境文件也应填同一值。
 
 ```sh
-# 原生：STOCK_DB 指向源，destination 必须不存在
-python -m lib.cli backup /safe/new-backup.db
-python -m lib.cli restore /safe/new-backup.db /isolated/new-restored.db
-# Docker：备份写入持久化卷后由运维复制到外部备份位置
-docker compose exec web python -m lib.cli backup /app/data/backup-NEW.db
+# 先校验；缺少本机路径/账号时按实际部署修正
+systemd-analyze verify deploy/stock-tracker-digest.service deploy/stock-tracker-digest.timer
+systemd-analyze calendar --iterations=5 '*-*-* 06:00:00 America/New_York'
+sudo install -m 0644 deploy/stock-tracker-digest.service /etc/systemd/system/
+sudo install -m 0644 deploy/stock-tracker-digest.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+# 只有完成配置、dry-run和旧任务核对后，由所有者启用：
+sudo systemctl enable --now stock-tracker-digest.timer
+systemctl list-timers stock-tracker-digest.timer
+systemctl status stock-tracker-digest.service stock-tracker-digest.timer
+journalctl -u stock-tracker-digest.service -n 100 --no-pager
+# 停用：
+sudo systemctl disable --now stock-tracker-digest.timer
 ```
 
-使用 SQLite backup API，包含一致快照而非直接复制活跃 `.db`；恢复执行 `integrity_check` 且拒绝覆盖目标。恢复演练在隔离路径，不删除原库。CSV 导出来自发布批次的完整源修订，不充当数据库备份；旧 CSV 只能 `python scripts/migrate_prices.py --source PATH` 只读审计，不导入价格。
+示例每天纽约06:00触发，明确使用 `America/New_York`，不写固定 UTC 偏移。更改时间可编辑 timer/drop-in，并 daemon-reload/restart timer。`Persistent=true` 会在停机后触发一次，目标按**实际执行时刻最近已收盘交易日**选择，不追补停机期间每一天。周末、节假日、周一早晨可能指向同一最近交易日，由持久化唯一键防重。早收盘使用 XNYS 日历。
 
-## 通知与实际契约
+默认行情 scheduler 在纽约交易日04:00排队，06:00通知不保证行情已完成。周五收盘后到周一早晨可能还没有周五批次，独立日报会明确报告延迟并冻结该结果。保留用户实际更新时间，结合真实采集池耗时调整；可用 `update-schedule --time HH:MM` 设置每天交易日排队时间。540资产仅5秒调用间隔就约45分钟，重试/历史回补/限流会更久。不要用加速并发 Yahoo 请求赶通知。先观察真实 `runs`，按需由所有者选择合适的行情运行安排；缺数据时不换成旧日报。
 
-契约固定验证 `captainamari/notification-hub@7c6ef039047e9adae7c6ca14d4e32204f352957c`：Bearer `POST /api/v1/notify`，请求 `title/message/channel/level/source/metadata`，返回 `request_id/status/channel/delivered_to/skipped/failed`。hub 不提供幂等键或回执查询。
+服务只调用通知脚本，既不 Requires/After 行情服务，也不依赖其成功事件。20分钟超时可能留下不确定投递，不能以重启服务自动盲目补发。没有自动 Restart；状态和日志供人工处理。
 
-Stock Tracker 只保存 `trading` 等渠道引用，hub 保存 Telegram/SMTP 目标与凭据。设置 `NOTIFICATION_API_URL` / `NOTIFICATION_API_TOKEN`，管理页保存计划不发送，明确测试按钮才入队。默认禁用真实通知。06:00 目标为那一刻最近完成交易日，scheduler 停机后补检查仍使用计划时刻目标，避免把晚间新收盘误当早晨目标。每纽约交易日每种计划最多一次；缺报告发送缺失摘要，源修订不默认重发。
-
-长报告冻结分段。成功分段不重复发送；连接未建立、429 可限次重试；读写超时、502、无效回执、部分成功一律保留 `unknown/partial`，管理员核对后可“确认处理，不重发”。不能证明 exactly-once。没有第二个直接 Telegram 后端同时运行。
+## 通知入口、退出码和人工处理
 
 ```sh
+# 默认最近已收盘交易日；此命令会发送
+python -m scripts.send_daily_report --config /etc/stock-tracker/daily-report.json
+# DAILY_REPORT_CONFIG 可代替 --config
+python -m lib.cli deliveries
+python -m lib.cli deliveries --id DELIVERY_ID     # 分段状态、尝试数、安全错误代码与回执 ID
+python -m lib.cli delivery-confirm DELIVERY_ID     # 仅确认，不重发
+python -m lib.cli delivery-retry DELIVERY_ID       # 明确重试，直接发送该任务的未成功部分
+# 延迟摘要之后需要正式报告，或核对后明确需要另一份报告：
+python -m scripts.send_daily_report --config /etc/stock-tracker/daily-report.json --date YYYY-MM-DD --manual-reissue
+```
+
+自动日报唯一键为稳定 profile + 目标交易日 + channel。同日更新批次、配置内容/顺序变化、跨自然日重跑均不会重发。首次正式操作冻结名单、配置摘要、内容和 batch；重试沿用这些分段。`--manual-reissue` 是额外投递，必须指定交易日，可能产生重复消息；原冻结记录不改写。换 profile 或渠道是新的逻辑投递身份，不能随意随机生成 profile。
+
+明确未建立连接、429 是可重试；脚本尝试自己的任务后退出，后续再次运行或 `delivery-retry` 可继续，最多三次自动安全尝试。成功分段不会重发。超时、无效回执、部分投递、进程在发送中中断一律 unknown/partial，不能自动重试；先到真实渠道核对，再 confirm 或显式 manual-reissue。Hub 不提供远程幂等/回执查询，不能保证网络级 exactly-once。
+
+| Exit | Meaning |
+|---|---|
+| 0 | 已发送/已确认，或 ready 的 dry-run |
+| 2 | 配置、路径/权限或日期错误 |
+| 3 | 目标批次缺失；正式运行已发送/冻结延迟摘要，dry-run 仅打印。systemd 视为可理解的完成状态 |
+| 4 | 结果不确定、部分成功或另一进程发送中，人工核对 |
+| 5 | Hub 未配置/拒绝/安全可重试，查看持久化状态 |
+| 6 | 数据库不可读或未迁移 |
+
+私人日报不挂在免登录网站，正文只链接公开概览。非指数个人股票可进入通知，但不改变市场广度。日志不输出 token、通知目标或原始网络异常。
+
+## 服务器维护命令
+
+```sh
+python -m lib.cli assets
+python -m lib.cli seed-watchlist --file /private/tickers.json --explicit
+python -m lib.cli asset-add INTC --name Intel --public
+python -m lib.cli asset-add MYPRIVATE --yahoo MYPRIVATE
+python -m lib.cli asset-public INTC
+python -m lib.cli asset-private INTC
+python -m lib.cli asset-disable INTC
+python -m lib.cli asset-enable INTC
+python -m lib.cli update
+python -m lib.cli runs --id RUN_ID
+python -m lib.cli update-schedule
+python -m lib.cli update-schedule --time 04:00
+```
+
+新增配置仅写入待更新资产，不下载行情。已有条目的隐私和 Yahoo 映射不会被 asset-add 覆盖，修改公开状态需专门命令。别名解析复用采集映射。保留 index stock 为额外配置后，即使退出指数仍采集。禁止通过 HTTP/CSV 手工写价格。原关注/持有数据只用于历史与私人配置导出，不注入访客收藏。
+
+## 回滚
+
+先停新 timer 和所有写进程，保存故障版本数据库及配置作为审计副本。恢复旧提交/镜像、旧服务文件和升级前环境配置；用 `restore` 将升级前备份恢复到**另一个新路径**，核对 integrity_check、行情/报告/投递与隐私后显式切换 STOCK_DB/卷。不得原地覆盖生产库。008 是增量迁移，但不宣称旧代码自动兼容所有新增报告；推荐代码和匹配备份成对回滚。恢复旧通知调度前先检查真实收件与已完成投递，避免旧调度再次发送。不要同时运行旧通知 worker 和新 timer。浏览器收藏仅在本机，回滚服务器不会同步或清除它。
+
+## 验证与限制
+
+```sh
+pip install -r requirements-dev.txt
+python -m pytest -q
+node --check web/static/js/main.js
+node --check web/static/js/watchlist.js
+python -m compileall -q lib web scripts
+python -m playwright install chromium
+python -m scripts.browser_acceptance --database /new/synthetic-browser.db --artifacts /tmp/browser-evidence
+# 真实 Hub 路由/schema，替换 Apprise 网络边界，不发送真实消息：
 git clone https://github.com/captainamari/notification-hub ../notification-hub
 git -C ../notification-hub checkout 7c6ef039047e9adae7c6ca14d4e32204f352957c
-pip install -r requirements-dev.txt
 python -m scripts.verify_hub_contract --checkout ../notification-hub
 ```
 
-该测试执行真实 hub 路由、鉴权、schema、路由/回执逻辑，仅替换 Apprise 网络边界。不会发送真实渠道消息，也不修改 hub。
-
-## S5 生产验收（本次未执行）
-
-以下是 Stock Tracker 生产切换验收；独立 notification-hub 的公网 HTTPS 和 Telegram 收件已单独验证，不代表 Stock Tracker 已部署或启用定时通知。
-
-- 核实 VPS 数据路径、磁盘容量、SQLite 本地盘和文件权限，备份保存与隔离恢复可用。
-- 核对 TLS、Secure/SameSite/HttpOnly cookie、反向代理及管理员登录，访客写入/隐私隔离。
-- 停旧 cron、旧 worker 和直连 Telegram；启动新四进程并验证重启、过期租约接管。
-- 实地观察纽约 04:00 / 06:00、假日/DST 的计划记录、最新行情日期和缺失告警。
-- 经用户另行授权，用真实 hub 凭据验证真实 Telegram/Email 收件与超时人工核对流程。
-- 对照已验证备份执行回滚演练，记录实际版本、路径、监控及恢复耗时。
-
-## 公网通知服务配置
-
-默认 hub 基址为 `https://notify.watchpoint.space`，完整发送路径由客户端自动拼成 `https://notify.watchpoint.space/api/v1/notify`。hub 的 `trading` 渠道路由到 Telegram。Stock Tracker 可以部署在另一台服务器，使用正常 HTTPS 证书校验访问；无需在 Stock Tracker 所在服务器再部署 hub。
-
-1. 在 Stock Tracker 的私有 `.env` 中设置以下两项。新安装可从 `.env.example` 复制；已有安装直接编辑现有文件，不覆盖其他设置。实际 token 与 hub 的 `API_TOKEN` 相同，仅通过服务器环境注入，不提交 Git，也不填写到网页渠道字段。
-
-   ```env
-   NOTIFICATION_API_URL=https://notify.watchpoint.space
-   NOTIFICATION_API_TOKEN=<现有 hub API_TOKEN>
-   ```
-
-   省略 URL 环境变量时使用上述默认地址；显式空字符串仍表示不配置 hub，旧 `.env` 中的空值需填入地址。token 未配置时发送任务会被标记为 `blocked`，不会访问 hub。
-
-2. 执行 `docker compose up -d --force-recreate`，让四个服务加载新环境；仅 `restart` 不会更新环境变量。原生部署须由服务管理器注入相同变量并重启相关进程。
-3. 登录 `/admin`，将 **Hub channel reference / Hub 渠道引用** 设为 `trading` 并保存。空库已默认使用此渠道；已有数据库保存的其他渠道需要在此显式修改，升级不会覆盖其计划。不要填写 Telegram chat ID 或 token。
-4. 保持定时通知关闭，点击 **Send a test message / 发送测试消息**，同时核对管理页投递状态及 Telegram 收件。确认后按需启用定时通知。更新时间默认纽约交易日 04:00，通知默认 06:00；通知开关不控制行情更新。启用时若当天发送时刻已过且尚未执行，scheduler 可在下一次检查立即补执行当天通知。
-
-地址和渠道配置不包含 token，也不自动启用定时通知。此次变更不部署 Stock Tracker、不修改现有行情库、不再次发送真实通知。
-
-
-## Yahoo 请求控制与真实数据复用
-
-默认每次 yfinance history 调用至少间隔 5 秒，顺序采集，已有历史仅检查 45 天重叠区间；缺失、复权变化才扩展为 800 天窗口。单次 history 可能发出多个 HTTP 请求，所以这不是 Yahoo 官方配额。遇到 YFRateLimitError / HTTP 429，立即停止整个任务，保留上次发布，数据库持久化暂停 6 小时；重启或重复点击不能绕过。暂停期间尝试任务会失败但不访问来源；到期后由下一次定时或手动更新再试，不自动循环重试。其他错误最多三次，退避 10/30 秒。管理页任务进度显示暂停截止时间。环境变量 YAHOO_MIN_INTERVAL_SECONDS / YAHOO_COOLDOWN_SECONDS 可调。无法保证 Yahoo 不限制 VPS IP；请先验收小观察池，观察日期、失败原因与请求频率。
-
-5,004 个资产在默认间隔下仅请求启动间隔就需约 6 小时 57 分钟，另加下载和计算，无法用合成容量结果证明 04:00 开始会在 06:00 前完成。需按真实观察池大小调整计划并实测；通知到时缺报告仍使用明确缺失摘要。
-
-git pull **只拉代码，不含数据库**。容量测试的 126 万行全部是隔离合成数据，不能部署为行情。真实验证库只有六个资产的 3,300 行，可通过 SQLite backup API 的一致副本单独传输，节省首次历史下载。
-
-新安装可将经校验的真实备份上传到独立位置，然后恢复到不存在的目标（以下路径为示例；已有 VPS 必须保留原数据库并走上文迁移步骤）：
-
-~~~sh
-sha256sum /safe/real-market-bootstrap-2026-10-20.db
-python -m lib.cli restore /safe/real-market-bootstrap-2026-10-20.db /new/stock-data/stock_tracker.db
-export STOCK_DB=/new/stock-data/stock_tracker.db
-python -m lib.cli init
-python -m lib.cli init-admin
-~~~
-
-Docker 部署必须把恢复后的库放入实际 stock-data 挂载卷，单纯上传到仓库目录不会被容器读取。生产 PUBLIC_URL、TLS cookie 和 hub 配置单独设置，四进程指向同一库。交付的真实 bootstrap 已去除临时账号、会话、登录尝试、通知配置和投递记录，通知默认关闭；旧日报的冻结 localhost 链接保留来源，不伪改历史。恢复后先检查六资产行情、日期、详情和日报，再决定更新。不得用这个小样本库覆盖已有 VPS 配置或历史。以上仅为后续 S5 操作说明，本次没有连接或修改 VPS。
-
-## 指数观察池（2026-10-22 追加）
-
-配置默认 INDEX_UNIVERSE_ENABLED=true。迁移 006 为所有已有 watchlist 行添加 is_personal=1，新增指数名单、版本与任务绑定表；不删除或覆盖旧行情、旧报告和个人设置。部署前仍应按上述流程做备份并在副本检查。先执行 python -m lib.cli init，再启动四个进程；web/CLI 启动也会安全检查初始化。若升级时已有运行中的任务，保留其原有资产集合，下一个任务才采用新范围。
-
-配置种子只在空观察池读取原 config/tickers.json。指数种子 config/index_universe.json 只在尚无名单快照时写入；之后数据库名单是权威，不会被每次启动还原为旧 JSON。现有 44 个配置条目均保留，初次安装当前共 540 个去重采集资产；实际 VPS 数量取决于已有个人条目及停用选择。重复代码按大写 Yahoo 映射去重，点号股份类映射为连字符；GOOG/GOOGL 等不同股份不合并。四个基准使用固定 SPY/QQQ/IWM/^VIX 映射。
-
-名单来源（仅代码和公司名，不获取或导入第三方价格）：
-- [S&P 500 constituents, Wikipedia](https://en.wikipedia.org/wiki/List_of_S%26P_500_companies)
-- [Nasdaq-100 constituents, Wikipedia](https://en.wikipedia.org/wiki/List_of_NASDAQ-100_companies)
-
-这些是公开维护的成分表，**不是官方授权指数数据 feed**。来源 URL、UTC 获取时间和完整快照随库保留。网页模板使用自动转义；名单解析验证固定表结构、代码、重复、数量范围和相对上次的大幅变动。源页面结构或名单发生超出校验边界的变化时，需审查来源并修正解析/边界，不能关闭校验后静默导入。
-
-刷新发生在已有定时或管理员行情更新的 worker 开始阶段：成功快照满七天才刷新，两份表全部通过后一起提交；网络阶段不持有 SQLite 写事务，写入仍校验任务租约。失败或任一表不完整时整组回滚，继续使用旧完整名单，记录管理页警告，至少 24 小时后才允许下一次尝试。不存在新增的价格下载入口、GET 下载或管理员价格写入功能。名单时间是获取时间，不宣称指数官方生效时间；新成分并非自动回溯为过去指数成员，历史任务绑定当时快照。
-
-纯指数成员离开两个指数后停止日常采集，不删除价格或报告，个人条目继续按其启用状态采集。主动停用、公开/私人选择均不被名单刷新覆盖；重新加入指数也不覆盖主动停用。要永久保留某个指数股票，管理员在已有新增表单保存它为个人条目。新指数条目默认公开，已有私人条目不会因入选指数变公开。存在多个别名时按同一 Yahoo 代码只采集一次，合并范围采用较严格的隐私选择。
-
-默认 540 个资产的五秒请求启动间隔约需 45 分钟，另加网络、重试、复权全窗口重取及计算；04:00 到 06:00 的实际时长仍需真实观察池实测。首次扩大范围需要历史下载。保持 Yahoo 六小时限流暂停，不为赶通知而并发冲击数据源。原 3,300 行真实 bootstrap 可继续恢复后增量迁移，新名单股票显示待更新；git pull 包含名单配置和代码，不包含行情数据库。
-
-本次已在本地真实预览库的备份基础上检查迁移和页面；其 2 个个人条目及 3,300 行真实行情保持不变，新增 516 个待更新条目，下一次采集共 522 个资产。真实成分名单下载成功；完整 523 资产 worker 测试使用隔离合成行情。未声称完成全名单真实 Yahoo 下载，未部署 VPS、合并 PR 或发送真实通知。
-
-## 升级个人日报与分页
-
-本版本包含加法迁移 `007_personal_reports.sql`，沿用部署时的数据库备份与迁移流程。部署前保留一致性 SQLite 备份；迁移不会删除价格、策略结果、报告或投递记录。已有个人条目首次设为关注，持有留空；指数条目不会自动全部关注。
-
-部署后的第一次成功数据更新会生成结构化公开日报，以及关注、持有、关注或持有三个私人快照。此前历史报告保留原文本，不重建历史个人名单。若通知时尚无目标日的新范围快照，沿用缺失摘要行为。可在管理员“通知计划”设置范围和标准/精简模式，再用“预览，不发送”检查；已排队的旧消息不会被改写。通知渠道默认 `trading`，现有频道、启用状态和定时设置不被覆盖。
-
-通知仍使用现有 `POST /api/v1/notify` 和服务器环境变量中的凭据。模板采用纯文本，无需 notification-hub 修改、HTML 模式或额外依赖；消息不再附带内部 ID 元数据 JSON，回执仍保留在本地 outbox。请勿把 Token 放入模板、配置 JSON、提交记录或 PR。
+本机为 Windows，没有 systemd/WSL，不能在本机声称 unit 原生执行通过。CI 增加 Linux systemd-analyze 校验与真实 Chromium 场景；实际运行结果见验收记录。未执行 VPS 部署、生产数据库迁移、真实通知或用户验收。旧 docs/progress 与 DEPLOY_QA 是历史证据，不作为本版本启动指南。

@@ -15,7 +15,7 @@ def report_id(batch, scope):
     return batch if scope == 'all' else f'{batch}-{scope}'
 
 
-def build_document(conn, batch, target, pulse, scope):
+def build_document(conn, batch, target, pulse, scope, symbols=None):
     assets = []
     from lib.market_calendar import calendar
     previous_date = calendar(int(target[:4])).previous_session(target).date().isoformat()
@@ -29,18 +29,22 @@ def build_document(conn, batch, target, pulse, scope):
     for row in conn.execute('SELECT symbol,strategy_id,payload FROM daily_results WHERE run_id=?', (batch,)):
         saved.setdefault(row['symbol'], {})[row['strategy_id']] = json.loads(row['payload'])
     for row in conn.execute('''SELECT a.*,w.is_followed,w.is_held FROM run_assets a
-                              LEFT JOIN watchlist w USING(symbol) WHERE run_id=? AND role='stock' ORDER BY symbol''', (batch,)):
+                              LEFT JOIN watchlist w USING(symbol) WHERE run_id=? ORDER BY symbol''', (batch,)):
         a = dict(row)
-        if not (a['is_public'] if scope == 'all' else in_scope(a, scope)):
+        if not (a['symbol'] in symbols if symbols is not None else a['is_public'] if scope == 'all' else in_scope(a, scope)):
             continue
         if scope == 'all':
             a.pop('is_followed', None)
             a.pop('is_held', None)
         a['strategies'] = saved.get(a['symbol'], {})
+        if a['role'] == 'benchmark':
+            a['strategies'] = {k:v for k,v in a['strategies'].items() if k == 'technical'}
         a['changes'] = []
         for key in STRATEGIES:
             r = a['strategies'].get(key, {})
             old = previous.get((a['symbol'], key))
+            if not r:
+                continue
             r['score'] = score(r, key)
             r['near'] = near(r, key)
             r['previous'] = None
@@ -66,7 +70,7 @@ def build_document(conn, batch, target, pulse, scope):
                 report_id=report_id(batch, scope), previous_batch=prior[0] if prior else None, previous_date=previous_date,
                 followed=sum(bool(a.get('is_followed')) for a in assets), held=sum(bool(a.get('is_held')) for a in assets),
                 missing=sum(a['status'] != 'ok' for a in assets),
-                strategy_missing=sum(any(a['strategies'].get(s,{}).get('status') != 'ok' for s in STRATEGIES) for a in assets),
+                strategy_missing=sum(a['role'] != 'benchmark' and any(a['strategies'].get(s,{}).get('status') != 'ok' for s in STRATEGIES) for a in assets),
                 changes=sum(len(a['changes']) for a in assets),
                 url=f'{settings().public_url}/reports/{report_id(batch, scope)}')
 

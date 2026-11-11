@@ -20,14 +20,3 @@ def client(database):
     from web.app import app
     with TestClient(app) as c:
         yield c
-
-
-@pytest.fixture
-def admin(client):
-    from web.auth import initialize_admin
-    initialize_admin('isolated-test-password')
-    csrf = client.get('/api/auth/session').json()['csrf']
-    response = client.post('/api/auth/login', json={'password': 'isolated-test-password'}, headers={'x-csrf-token': csrf})
-    assert response.status_code == 200
-    client.headers['x-csrf-token'] = response.json()['csrf']
-    return client

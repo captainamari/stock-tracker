@@ -46,3 +46,7 @@ data/prices/*.csv
 .codebuddy/
 
 reports/daily/
+
+# Private notification profiles
+config/daily-report.json
+config/daily-report.*.private.json

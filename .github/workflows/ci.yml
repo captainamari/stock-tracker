@@ -16,6 +16,21 @@ jobs:
         with:
           node-version: '22'
       - run: node --check web/static/js/main.js
+      - run: node --check web/static/js/watchlist.js
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m scripts.browser_acceptance --database /tmp/stock-browser.db --artifacts /tmp/browser-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-evidence
+          path: /tmp/browser-evidence
+      - name: Validate independent timer and service
+        run: |
+          systemd-analyze calendar --iterations=5 '*-*-* 06:00:00 America/New_York'
+          mkdir -p /tmp/unit-check
+          sed -e "s|/opt/stock-tracker/.venv/bin/python|$(command -v python)|" deploy/stock-tracker-digest.service > /tmp/unit-check/stock-tracker-digest.service
+          cp deploy/stock-tracker-digest.timer /tmp/unit-check/
+          systemd-analyze verify /tmp/unit-check/*.service /tmp/unit-check/*.timer
       - uses: actions/checkout@v4
         with:
           repository: captainamari/notification-hub

@@ -4,7 +4,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 from fastapi.templating import Jinja2Templates
 from web.i18n import get_language_from_request
-from web.auth import session
 from lib.settings import settings
 from lib.market_calendar import completed_session
 from lib.listing import near, score
@@ -63,9 +62,10 @@ def context(request):
         return t(*values.get(key,(key,key)))
     def local_time(value):
         return datetime.fromisoformat(value.replace('Z','+00:00')).astimezone(ZoneInfo(settings().display_timezone)).strftime('%Y-%m-%d %H:%M %Z') if value else '—'
-    return dict(lang=lang,t=t,status_label=label,near=near,strategy_score=score,names={s:t(*v) for s,v in NAMES.items()},
+    from lib.symbols import DEFAULT_WATCHLIST
+    return dict(default_watchlist=DEFAULT_WATCHLIST,lang=lang,t=t,status_label=label,near=near,strategy_score=score,names={s:t(*v) for s,v in NAMES.items()},
                 condition_names={s:[t(*v) for v in names] for s,names in CONDITIONS.items()},
-                admin=bool(session(request)),local_time=local_time,expected_date=completed_session(),regime_label=regime_label,group_label=group_label,
+                local_time=local_time,expected_date=completed_session(),regime_label=regime_label,group_label=group_label,
                 display_timezone=settings().display_timezone)
 
 

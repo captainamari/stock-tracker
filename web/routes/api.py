@@ -1,129 +1,53 @@
-"""Read-only published data; configuration writes never fetch or compute."""
+"""Public HTTP has read-only routes only. Administration is server CLI only."""
 from fastapi import APIRouter, Request, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 from lib import db
-from lib.pipeline import validate_ticker, request_update
-from lib.jobs import get_run
-from lib.settings import stamp
-from web.auth import require_admin, session
-
-router = APIRouter(tags=['api'])
+from lib.guest import collection, public_value
+from lib.symbols import normalize, resolve
+router = APIRouter(tags=['public'])
 
 
-class AddTickerRequest(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    symbol: str
-    name: str = Field(default='', max_length=100)
-    sector: str = Field(default='', max_length=80)
-    yf_ticker: str | None = None
-    is_public: bool = False
+def selection(symbols):
+    if symbols is None:
+        return None
+    if len(symbols) > 1600:
+        raise HTTPException(422, 'Too many symbols')
+    try:
+        return normalize(symbols.split(',') if symbols else [])
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
-    @field_validator('symbol', 'yf_ticker')
-    @classmethod
-    def symbol_valid(cls, value):
-        if value is None:
-            return value
-        result = validate_ticker(value)
-        if not result['valid']:
-            raise ValueError('Invalid ticker syntax')
-        return result['symbol']
+
+@router.get('/assets')
+@router.get('/dashboard')
+def assets(request: Request, batch: str | None = None, symbols: str | None = None,
+           report_id: str | None = None, page: int = 1, size: int = 20, scope: str = 'all',
+           search: str = '', strategy: str = '', match: str = 'all', sort: str = 'order'):
+    if scope != 'all':
+        raise HTTPException(404, 'Private scopes are not available')
+    try:
+        return collection(batch, selection(symbols), report_id, page=page,size=size,search=search[:100],strategy=strategy,match=match,sort=sort)
+    except LookupError:
+        raise HTTPException(404) from None
 
 
 @router.get('/tickers/check/{symbol}')
 def check(symbol: str):
-    return validate_ticker(symbol)
-
-
-@router.post('/tickers')
-def add_ticker(payload: AddTickerRequest):
-    with db.get_db() as conn:
-        conn.execute('''INSERT INTO watchlist(symbol,name,sector,yf_ticker,is_public,enabled,updated_at)
-          VALUES (?,?,?,?,?,1,?) ON CONFLICT(symbol) DO UPDATE SET name=excluded.name,sector=excluded.sector,
-          yf_ticker=excluded.yf_ticker,is_public=excluded.is_public,enabled=1,is_personal=1,updated_at=excluded.updated_at''',
-          (payload.symbol, payload.name or payload.symbol, payload.sector, payload.yf_ticker or payload.symbol.replace('.', '-'), int(payload.is_public), stamp()))
-        conn.execute('UPDATE watchlist SET is_followed=1 WHERE symbol=?', (payload.symbol,))
-    return {'symbol': payload.symbol, 'status': 'pending', 'message': 'Saved; use Update data to collect market data.'}
-
-
-class InterestUpdate(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    symbols: list[str] = Field(min_length=1, max_length=100)
-    is_followed: bool | None = None
-    is_held: bool | None = None
-
-
-@router.patch('/interests')
-def interests(payload: InterestUpdate, request: Request):
-    require_admin(request)
-    from lib.interests import update
-    try:
-        update(payload.symbols, payload.is_followed, payload.is_held)
-    except ValueError as exc:
-        raise HTTPException(422, str(exc)) from exc
-    return {'status': 'saved'}
-
-
-@router.get('/assets')
-def assets(request: Request, batch: str | None = None, page: int = 1, size: int = 20,
-           scope: str = 'all', search: str = '', strategy: str = '', match: str = 'all', sort: str = 'symbol'):
-    from lib.queries import dashboard_data
-    from lib.listing import select, paginate
-    private = bool(session(request))
-    if scope != 'all' and not private:
-        raise HTTPException(401, 'Administrator login required')
-    data = dashboard_data(batch, private, include_pending=True)
-    result = paginate(select(data['assets'], scope=scope, search=search, strategy=strategy,
-                             match=match, sort=sort, private=private), page, size)
-    return {**result, 'batch_id': data['batch_id']}
-
-
-@router.delete('/tickers/{symbol}')
-def disable(symbol: str):
-    db.set_ticker_enabled(symbol.upper(), False)
-    return {'status': 'disabled'}
-
-
-class Visibility(BaseModel):
-    model_config = ConfigDict(extra='forbid')
-    is_public: bool
-
-
-@router.patch('/tickers/{symbol}/visibility')
-def visibility(symbol: str, payload: Visibility):
-    with db.get_db() as conn:
-        conn.execute('UPDATE watchlist SET is_public=?,updated_at=? WHERE symbol=?', (int(payload.is_public), stamp(), symbol.upper()))
-    return {'status':'saved'}
-
-
-@router.post('/prices/refresh')
-def refresh():
-    return {'run_id': request_update('manual')}
-
-
-@router.get('/runs/{run_id}')
-def run_status(request: Request, run_id: str):
-    require_admin(request)
-    result = get_run(run_id)
-    if not result:
-        raise HTTPException(404)
-    from lib.provider_guard import status
-    result['provider'] = status()
-    return result
-
-
-@router.get('/dashboard')
-def dashboard(request: Request, batch: str | None = None):
-    from lib.queries import dashboard_data
-    return dashboard_data(batch, private=bool(session(request)))
+    chosen = selection(symbol)
+    result = collection(symbols=chosen)
+    return {'symbol': chosen[0], 'covered': bool(result['items'] and result['items'][0]['status']!='unavailable')}
 
 
 @router.get('/ticker/{symbol}')
 def ticker(request: Request, symbol: str, batch: str | None = None):
     from lib.queries import ticker_data
-    value = ticker_data(symbol.upper(), batch, private=bool(session(request)))
+    with db.get_db() as conn:
+        symbol = resolve(conn, selection(symbol))[0]
+    value = ticker_data(symbol,batch)
     if value is None:
         raise HTTPException(404)
-    return value
+    if value['asset'].get('role')=='benchmark':
+        value['strategies'] = {k:v for k,v in value['strategies'].items() if k=='technical'}
+    return public_value(value)
 
 
 @router.get('/ticker/{symbol}/prices.csv')

@@ -22,9 +22,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from starlette.middleware.gzip import GZipMiddleware
 
-from web.routes import dashboard, watchlist, ticker, api, admin, notifications
+from web.routes import dashboard, watchlist, ticker, api
 from web.i18n import get_language_from_request, SUPPORTED_LANGUAGES
-from web.auth import router as auth_router, guard
 from lib.migrations import migrate
 from contextlib import asynccontextmanager
 
@@ -47,8 +46,13 @@ app = FastAPI(
 
 # Gzip 压缩
 app.add_middleware(GZipMiddleware, minimum_size=500)
-app.middleware('http')(guard)
-app.include_router(auth_router)
+
+@app.middleware('http')
+async def public_cache_policy(request, call_next):
+    response = await call_next(request)
+    if not request.url.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'no-store'
+    return response
 
 # 静态文件
 STATIC_DIR = Path(__file__).parent / "static"
@@ -75,8 +79,6 @@ app.include_router(dashboard.router)
 app.include_router(watchlist.router)
 app.include_router(ticker.router)
 app.include_router(api.router, prefix="/api")
-app.include_router(admin.router)
-app.include_router(notifications.router)
 
 # ============================================================
 # CLI 入口

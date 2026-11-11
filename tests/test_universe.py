@@ -165,25 +165,22 @@ def test_parser_and_large_change_validation(database):
         assert conn.execute('SELECT snapshot_id FROM universe_state').fetchone()[0] == identifier
 
 
-def test_gets_do_not_refresh_and_adding_index_stock_keeps_it_personal(admin, monkeypatch):
+def test_gets_do_not_refresh_and_cli_retains_index_stock(client,monkeypatch):
+    from lib.cli import main
     monkeypatch.setenv('INDEX_UNIVERSE_ENABLED','true')
     apply(snapshot(8))
-    def prohibited():
-        raise AssertionError('GET refreshed index membership')
+    def prohibited():raise AssertionError('GET refreshed index membership')
     monkeypatch.setattr(universe,'fetch_snapshot',prohibited)
-    for path in ('/watchlist?lang=en','/watchlist?lang=zh','/admin','/api/dashboard'):
-        assert admin.get(path).status_code == 200
-    assert 'unique index stocks' in admin.get('/watchlist?lang=en').text
-    assert '成分名单待刷新' in admin.get('/watchlist?lang=zh').text
-    result = admin.post('/api/tickers',json={'symbol':'AAPL','name':'My Apple','is_public':False})
-    assert result.status_code == 200
-    changed = snapshot()
-    replace_symbol(changed, 'AAPL', 'SYNAPPLE')
-    apply(changed)
+    for path in ('/watchlist?lang=en','/discover?lang=zh','/api/dashboard'):
+        assert client.get(path).status_code==200
+    main(['asset-add','AAPL'])
+    main(['asset-private','AAPL'])
+    changed=snapshot();replace_symbol(changed,'AAPL','SYNAPPLE');apply(changed)
     with db.get_db() as conn:
-        a = conn.execute("SELECT * FROM watchlist WHERE symbol='AAPL'").fetchone()
-        assert a['is_personal'] == 1 and a['is_public'] == 0 and a['name'] == 'My Apple'
+        a=conn.execute("SELECT * FROM watchlist WHERE symbol='AAPL'").fetchone()
+        assert a['is_personal']==1 and a['is_public']==0
         assert 'AAPL' in {r['symbol'] for r in jobs.dependencies(conn)}
+
 
 
 def test_complete_union_flows_through_worker_once_per_stock(database, monkeypatch):
