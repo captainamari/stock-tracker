@@ -106,6 +106,6 @@ def report_data(report_id, private=False):
             return dict(row) if private else None
         # Historical text remains immutable; revoke public access if any formerly
         # public constituent has since been made private.
-        hidden = conn.execute('''SELECT 1 FROM run_assets a JOIN watchlist w USING(symbol)
-            WHERE a.run_id=? AND a.is_public=1 AND w.is_public=0 LIMIT 1''',(row['batch_id'],)).fetchone()
+        hidden = any(not permitted(conn,a['symbol'],a) for a in conn.execute(
+            'SELECT * FROM run_assets WHERE run_id=? AND is_public=1',(row['batch_id'],)))
         return None if hidden else dict(row)

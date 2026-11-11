@@ -241,12 +241,17 @@ def test_fresh_defaults_are_public_and_private_alias_revokes_history(database,cl
     monkeypatch.setenv('INDEX_UNIVERSE_ENABLED','false')
     seed_watchlist(('BRK.B',))
     with db.get_db() as conn:
-        conn.execute('UPDATE watchlist SET enabled=0')
+        conn.execute("UPDATE watchlist SET enabled=0 WHERE symbol NOT IN ('SPY','QQQ','IWM','VIX')")
         conn.execute("UPDATE watchlist SET enabled=1,yf_ticker='BRK-B' WHERE symbol='BRK.B'")
     run=update()
     assert client.get('/api/ticker/BRK-B',params={'batch':run}).status_code==200
+    from lib.queries import report_data
+    assert report_data(run) is not None
     db.upsert_watchlist([dict(symbol='PRIVATEALIAS',name='Secret',yf_ticker='BRK-B')])
     assert client.get('/api/ticker/BRK.B',params={'batch':run}).status_code==404
+    # Legacy plain text cannot safely remove a revoked alias; withhold the text.
+    with db.get_db() as conn:conn.execute('DELETE FROM report_documents WHERE report_id=?',(run,))
+    assert client.get('/reports/'+run).status_code==404
 
 
 def test_cli_delivery_review_is_explicit_and_preserves_records(database,capsys):
