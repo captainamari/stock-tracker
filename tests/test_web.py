@@ -5,31 +5,21 @@ from lib import db
 from tests.fixtures import seed_watchlist,update
 
 
-def test_watchlist_and_report_distinguish_near_from_match_and_unavailable(client):
-    seed_watchlist()
-    run = update()
-    outcomes = [('stage2_us', 'ok', True, 8), ('contraction_us', 'ok', False, 3),
-                ('bottom_fisher_us', 'ok', False, 0), ('checklist_us', 'failed', None, 0)]
+def test_watchlist_and_report_return_distinct_strategy_states(client):
+    seed_watchlist();run=update()
+    outcomes=[('stage2_us','ok',True,8),('contraction_us','ok',False,3),('bottom_fisher_us','ok',False,0),('checklist_us','failed',None,0)]
     with db.get_db() as conn:
-        document = json.loads(conn.execute('SELECT payload FROM report_documents WHERE report_id=?', (run,)).fetchone()[0])
-        asset = next(a for a in document['assets'] if a['symbol'] == 'AAA')
-        for key, status, signal, passed in outcomes:
-            result = asset['strategies'][key]
-            result.update(status=status, is_signal=signal, passed=passed, near=key == 'contraction_us')
-            conn.execute('UPDATE daily_results SET status=?,is_signal=?,payload=? WHERE run_id=? AND symbol=? AND strategy_id=?',
-                         (status, signal, json.dumps(result), run, 'AAA', key))
-        conn.execute('UPDATE report_documents SET payload=? WHERE report_id=?', (json.dumps(document), run))
-    for lang, labels in [('zh', ('匹配', '接近', '未匹配', '失败')), ('en', ('Match', 'Near', 'No match', 'Failed'))]:
-        for path, selector in [('/watchlist', 'tr[data-symbol="AAA"]'), ('/reports/'+run, '#stock-AAA .strategy-matrix')]:
-            response = client.get(path, params={'lang':lang})
-            assert response.status_code == 200
-            section = BeautifulSoup(response.text, 'html.parser').select_one(selector)
-            assert section.select_one('.badge.ok').get_text().strip().startswith(labels[0])
-            assert section.select_one('.badge.near').get_text().strip().startswith(labels[1])
-            assert len(section.select('.badge.near')) == 1
-            assert labels[2] in section.get_text() and labels[3] in section.get_text()
-            unmatched = next(b for b in section.select('.badge') if b.get_text().strip().startswith(labels[2]))
-            assert 'near' not in unmatched['class'] and 'ok' not in unmatched['class']
+        document=json.loads(conn.execute('SELECT payload FROM report_documents WHERE report_id=?',(run,)).fetchone()[0])
+        asset=next(a for a in document['assets'] if a['symbol']=='AAA')
+        for key,status,signal,passed in outcomes:
+            result=asset['strategies'][key];result.update(status=status,is_signal=signal,passed=passed,near=key=='contraction_us')
+            conn.execute('UPDATE daily_results SET status=?,is_signal=?,payload=? WHERE run_id=? AND symbol=? AND strategy_id=?',(status,signal,json.dumps(result),run,'AAA',key))
+        conn.execute('UPDATE report_documents SET payload=? WHERE report_id=?',(json.dumps(document),run))
+    for params in ({'symbols':'AAA'},{'symbols':'AAA','report_id':run}):
+        r=client.get('/api/assets',params=params).json()['items'][0]['strategies']
+        assert r['stage2_us']['is_signal'] and r['contraction_us']['near']
+        assert not r['bottom_fisher_us']['near'] and r['checklist_us']['status']=='failed'
+
 
 
 def test_all_gets_read_only_no_download_or_calculation(client,monkeypatch):
@@ -62,7 +52,7 @@ def test_privacy_and_language_isolation(client):
     assert 'SECRET' not in client.get('/api/dashboard').text
     assert client.get('/api/ticker/SECRET').status_code==404
     for path in ('/api/settings','/api/notifications','/api/runs/anything'):
-        assert client.get(path).status_code==401
+        assert client.get(path).status_code==404
     assert 'notification-settings' not in client.get('/admin').text
     def read(lang):
         page=client.get('/?lang='+lang).text

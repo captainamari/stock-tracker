@@ -37,45 +37,33 @@ def test_upgrade_labels_once_and_preserves_data(tmp_path):
         assert conn.execute('SELECT close FROM stock_prices').fetchone()[0] == 123
 
 
-def test_bulk_labels_atomic_private_and_independent(admin):
+def test_legacy_labels_preserved_but_not_exposed(client):
     seed_watchlist(('AAA','BBB'))
-    with db.get_db() as conn:
-        conn.execute("UPDATE watchlist SET is_personal=0,is_public=0 WHERE symbol='AAA'")
-    response=admin.patch('/api/interests',json={'symbols':['AAA','BBB','AAA'],'is_followed':True})
-    assert response.status_code==200
-    assert admin.patch('/api/interests',json={'symbols':['AAA','UNKNOWN'],'is_held':True}).status_code==422
+    labels(['AAA','BBB'],followed=True)
+    with pytest.raises(ValueError):labels(['AAA','UNKNOWN'],held=True)
     labels(['AAA'],held=True,followed=False)
     with db.get_db() as conn:
-        assert tuple(conn.execute("SELECT is_followed,is_held,is_personal,is_public,enabled FROM watchlist WHERE symbol='AAA'").fetchone())==(0,1,1,0,1)
-        assert conn.execute("SELECT is_held FROM watchlist WHERE symbol='BBB'").fetchone()[0]==0
-    labels(['AAA'],held=False)
-    with db.get_db() as conn:
-        assert conn.execute("SELECT enabled FROM watchlist WHERE symbol='AAA'").fetchone()[0]==1
-    csrf=admin.headers.pop('x-csrf-token')
-    assert admin.patch('/api/interests',json={'symbols':['BBB'],'is_followed':False}).status_code==403
-    admin.headers['x-csrf-token']=csrf
-    admin.post('/api/auth/logout')
-    assert admin.patch('/api/interests',json={'symbols':['BBB'],'is_followed':False}).status_code==401
-    assert admin.get('/api/assets?scope=following').status_code==401
-    assert 'is_followed' not in admin.get('/api/ticker/BBB').text
+        assert tuple(conn.execute("SELECT is_followed,is_held,enabled FROM watchlist WHERE symbol='AAA'").fetchone())==(0,1,1)
+    assert client.patch('/api/interests',json={'symbols':['AAA'],'is_held':False}).status_code==404
+    assert client.get('/api/assets?scope=held').status_code==404
+    assert 'is_held' not in client.get('/api/ticker/AAA').text
 
 
-def test_filter_whole_list_then_paginate_with_stable_ties(admin):
+
+def test_filter_whole_collection_then_paginate(client):
     seed_watchlist(tuple(f'S{i:03}' for i in range(65)))
-    labels([f'S{i:03}' for i in range(10,65)],followed=True)
-    labels(['S064'],held=True)
-    first=admin.get('/api/assets?scope=following').json()
-    second=admin.get('/api/assets?scope=following&page=2').json()
+    symbols=','.join(f'S{i:03}' for i in range(10,65))
+    first=client.get('/api/assets',params={'symbols':symbols}).json()
+    second=client.get('/api/assets',params={'symbols':symbols,'page':2}).json()
     assert first['total']==55 and first['pages']==3
     assert first['items'][0]['symbol']=='S010' and second['items'][0]['symbol']=='S030'
-    searched=admin.get('/api/assets?scope=personal&search=s064&page=99').json()
-    assert searched['total']==1 and searched['page']==1 and searched['items'][0]['symbol']=='S064'
-    assert admin.get('/watchlist?scope=held').status_code==200
-    assert admin.get('/admin?scope=following&page=2').status_code==200
-    assert admin.get('/watchlist?page=bad').status_code==422
+    searched=client.get('/api/assets',params={'symbols':symbols,'search':'s064','page':99}).json()
+    assert searched['total']==1 and searched['page']==1
+    assert client.get('/api/assets?symbols=').json()['total']==0
     rows=[dict(symbol=s,name='',price=5,role='stock',strategies={}) for s in ['ZZ','AA','BB']]
     assert [r['symbol'] for r in select(rows,sort='price')]==['AA','BB','ZZ']
-    assert paginate([],99)['page']==1 and paginate([],99)['total']==0
+    assert paginate([],99)['page']==1
+
 
 
 def test_state_filter_without_selected_strategy_matches_any_strategy():
@@ -88,7 +76,7 @@ def test_state_filter_without_selected_strategy_matches_any_strategy():
     assert not select(rows,strategy='stage2_us',match='near')
 
 
-def test_frozen_private_reports_preview_no_io_and_public_separation(admin, monkeypatch):
+def test_frozen_private_reports_preview_no_io_and_public_separation(client, monkeypatch):
     seed_watchlist(('AAA','SECRET','OTHER'))
     labels(['AAA','SECRET'],followed=True)
     labels(['SECRET'],held=True)
@@ -104,7 +92,7 @@ def test_frozen_private_reports_preview_no_io_and_public_separation(admin, monke
         assert original['assets'][0]['symbol']=='SECRET'
         rendered=notification_text(original)
         assert 'SECRET' in rendered and 'OTHER' not in rendered
-        assert 'MA50' in rendered and '▓' in rendered and '/reports/'+run+'-personal' in rendered
+        assert 'MA50' in rendered and '▓' in rendered and '/reports/' not in rendered
     labels(['SECRET'],held=False,followed=False)
     labels(['OTHER'],held=True)
     def prohibited(*args,**kwargs):
@@ -113,38 +101,31 @@ def test_frozen_private_reports_preview_no_io_and_public_separation(admin, monke
     monkeypatch.setattr('lib.strategy_service.calculate_run',prohibited)
     monkeypatch.setattr('lib.delivery.queue_report',prohibited)
     monkeypatch.setattr('lib.market_calendar.completed_session',lambda *args:'2026-10-20')
-    result=admin.get('/api/notifications/preview?scope=personal').json()
-    assert result['report_id']==run+'-personal' and 'SECRET' in ''.join(result['parts'])
-    for path in [f'/reports/{run}-personal',f'/reports/{run}-following',f'/reports/{run}-held',f'/reports/{run}','/daily','/admin']:
-        response=admin.get(path)
-        assert response.status_code==200,(path,response.text[:100])
+    with db.get_db() as conn:
+        identifier,body=notification_preview(conn,'2026-10-20','personal')
+    assert identifier==run+'-personal' and 'SECRET' in body
+    assert client.get('/daily').status_code==200
     with db.get_db() as conn:
         assert load_document(conn,run+'-personal')==original
         assert conn.execute('SELECT COUNT(*) FROM deliveries').fetchone()[0]==0
-    admin.post('/api/auth/logout')
     for path in [f'/reports/{run}-personal',f'/reports/{run}-following',f'/reports/{run}-held']:
-        assert admin.get(path).status_code==404
-    assert 'SECRET' not in admin.get('/daily').text
-    assert admin.get('/api/notifications/preview').status_code==401
+        assert client.get(path).status_code==404
+    assert 'SECRET' not in client.get('/daily').text
+    assert client.get('/api/notifications/preview').status_code==404
 
 
-def test_private_schedule_exact_date_and_frozen_parts(database):
-    from lib.schedule import save_schedule
-    seed_watchlist(('AAA','BBB'))
-    labels(['AAA'],held=True)
-    run=update()
-    save_schedule(dict(update_time='04:00',notify_time='06:00',channel='trading',enabled=True,report_scope='held',report_mode='compact'))
+def test_owner_digest_exact_date_and_frozen_parts(database):
+    from lib.digest import freeze,preview
+    seed_watchlist(('AAA','BBB'));update()
+    config=dict(version=1,profile='owner',symbols=['AAA'],channel='trading',mode='compact')
+    ident=freeze(config,'2026-10-20')
+    assert freeze({**config,'symbols':['BBB']},'2026-10-20')==ident
     with db.get_db() as conn:
-        ident=delivery.queue_daily(conn,'2026-10-20','2026-10-21','trading')
-        assert delivery.queue_daily(conn,'2026-10-20','2026-10-21','trading')==ident
-        assert conn.execute('SELECT report_id FROM deliveries').fetchone()[0]==run+'-held'
         parts=''.join(r[0] for r in conn.execute('SELECT body FROM delivery_parts ORDER BY part'))
-        assert 'AAA' in parts and 'BBB' not in parts and 'All daily prices' not in parts
-        missing,body=notification_preview(conn,'2026-10-21','personal')
-        assert missing is None and '2026-10-21' in body and 'AAA' not in body
-    labels(['AAA'],held=False)
-    with db.get_db() as conn:
-        assert ''.join(r[0] for r in conn.execute('SELECT body FROM delivery_parts ORDER BY part'))==parts
+        assert 'AAA' in parts and 'BBB' not in parts
+        missing,body,_=preview(conn,config,'2026-10-21')
+        assert missing is None and '2026-10-21' in body and 'Delayed or missing' in body
+
 
 
 def test_comparison_requires_adjacent_session_and_successful_evaluation(database):
@@ -167,15 +148,12 @@ def test_comparison_requires_adjacent_session_and_successful_evaluation(database
         assert rebuilt['previous_batch'] is None and not rebuilt['assets'][0]['changes']
 
 
-def test_legacy_reports_and_new_scopes_without_snapshot(admin):
-    seed_watchlist()
-    run=update()
-    with db.get_db() as conn:
-        conn.execute('DELETE FROM report_documents')
-        conn.execute('DELETE FROM report_snapshots WHERE public=0')
-    assert admin.get('/daily?scope=personal').status_code==200
-    assert '下次数据更新后' in admin.get('/daily?scope=personal').text
-    assert 'class="report"' in admin.get('/reports/'+run).text
+def test_legacy_reports_and_private_scopes(client):
+    seed_watchlist();run=update()
+    with db.get_db() as conn:conn.execute('DELETE FROM report_documents')
+    assert client.get('/daily?scope=personal').status_code==404
+    assert 'Legacy public report' in client.get('/reports/'+run+'?lang=en').text
+
 
 
 def test_paragraph_splitting_preserves_cards_and_unicode():
@@ -201,10 +179,10 @@ def test_missing_session_sparkline_keeps_gap(database):
         assert spark_path(a['sparkline']).count('M')==2
 
 
-def test_notification_history_pagination(admin):
-    for _ in range(25):
-        delivery.queue_test()
-    first=admin.get('/api/notifications?page=1').json()
-    second=admin.get('/api/notifications?page=2').json()
+def test_notification_history_available_to_server_only(client):
+    for _ in range(25):delivery.queue_test()
+    rows=delivery.list_deliveries(limit=-1)
+    first=paginate(rows,1);second=paginate(rows,2)
     assert first['total']==25 and len(first['items'])==20 and len(second['items'])==5
     assert not {r['delivery_id'] for r in first['items']} & {r['delivery_id'] for r in second['items']}
+    assert client.get('/api/notifications').status_code==404

@@ -38,24 +38,24 @@ def test_atomic_enqueue_claim_and_recovery(database):
     jobs.heartbeat(replacement)
 
 
-def test_database_authority_and_pending_add(admin):
+def test_database_authority_and_pending_add(database):
     from lib.config import sync_watchlist
-    assert admin.post('/api/tickers', json={'symbol':'NEW','yf_ticker':'NEW-A','is_public':True}).status_code == 200
-    assert db.get_price_count('NEW') == 0
-    admin.delete('/api/tickers/NEW')
+    from lib.cli import main
+    main(['asset-add','NEW','--yahoo','NEW-A','--public'])
+    assert db.get_price_count('NEW')==0
+    main(['asset-disable','NEW'])
     assert datetime.fromisoformat(db.get_watchlist_item('NEW')['updated_at']).utcoffset().total_seconds()==0
     sync_watchlist({'monitored':[{'symbol':'NEW','name':'Overwrite','enabled':True}]})
     assert not db.get_watchlist_item('NEW')['enabled']
-    admin.post('/api/tickers', json={'symbol':'NEW','yf_ticker':'NEW-A'})
-    run = request_update('manual', NOW)
+    main(['asset-enable','NEW'])
+    run=request_update('manual',NOW)
     with db.get_db() as conn:
-        assets = {r['symbol']:r['yf_ticker'] for r in conn.execute('SELECT * FROM run_assets WHERE run_id=?',(run,))}
-    assert assets['NEW'] == 'NEW-A'
-    assert assets['VIX'] == '^VIX'
-    assert set(jobs.DEPENDENCIES) <= set(assets)
+        assets={r['symbol']:r['yf_ticker'] for r in conn.execute('SELECT * FROM run_assets WHERE run_id=?',(run,))}
+    assert assets['NEW']=='NEW-A' and assets['VIX']=='^VIX'
+    assert set(jobs.DEPENDENCIES)<=set(assets)
 
 
-def test_administrator_cannot_write_market_values(admin):
-    assert admin.post('/api/tickers', json={'symbol':'BAD','close':999}).status_code == 422
-    for path in ('/api/prices','/api/indicators','/api/strategy-results','/api/prices/import'):
-        assert admin.post(path, json={'close':999}).status_code == 404
+
+def test_public_http_cannot_write_market_values(client):
+    for path in ('/api/tickers','/api/prices','/api/indicators','/api/strategy-results','/api/prices/import'):
+        assert client.post(path,json={'symbol':'BAD','close':999}).status_code==404

@@ -42,17 +42,6 @@ def queue_report(conn, report_id, target, channel, key=None, body=None):
     return delivery_id
 
 
-def queue_daily(conn,target,local_date,channel):
-    from lib.schedule import get_schedule
-    from lib.daily_reports import notification_preview
-    config = get_schedule(conn)
-    identifier, body = notification_preview(conn,target,config['report_scope'],config['report_mode'])
-    if identifier is None:
-        identifier = 'missing-'+local_date+'-'+config['report_scope']
-        conn.execute('INSERT OR IGNORE INTO report_snapshots VALUES (?,NULL,?,?,?,?,0)',(identifier,target,'missing',body,stamp()))
-    return queue_report(conn,identifier,target,channel,'daily:'+local_date,body=body)
-
-
 def queue_test():
     from lib.schedule import get_schedule
     with db.get_db() as conn:
@@ -103,16 +92,16 @@ class HubClient:
                 client.close()
 
 
-def claim():
+def claim(delivery_id=None):
     now=time.time()
     with db.get_db() as conn:
         conn.execute('BEGIN IMMEDIATE')
-        expired=conn.execute("SELECT delivery_id FROM deliveries WHERE status='sending' AND lease_until<?",(now,)).fetchall()
+        expired=conn.execute("SELECT delivery_id FROM deliveries WHERE status='sending' AND lease_until<? AND (? IS NULL OR delivery_id=?)",(now,delivery_id,delivery_id)).fetchall()
         for row in expired:
             # Crash between remote delivery and local receipt cannot be retried safely.
             conn.execute("UPDATE delivery_parts SET status='unknown',error='worker_interrupted' WHERE delivery_id=? AND status='sending'",(row[0],))
             conn.execute("UPDATE deliveries SET status='unknown',updated_at=? WHERE delivery_id=?",(stamp(),row[0]))
-        row=conn.execute("SELECT * FROM deliveries WHERE status IN ('queued','retryable') AND next_attempt<=? ORDER BY created_at LIMIT 1",(now,)).fetchone()
+        row=conn.execute("SELECT * FROM deliveries WHERE status IN ('queued','retryable') AND next_attempt<=? AND (? IS NULL OR delivery_id=?) ORDER BY created_at LIMIT 1",(now,delivery_id,delivery_id)).fetchone()
         if not row:
             return None
         owner=uuid.uuid4().hex
@@ -125,8 +114,8 @@ def fence(conn,item):
         raise RuntimeError('Delivery lease lost')
 
 
-def run_once(client=None):
-    item=claim()
+def run_once(client=None, delivery_id=None):
+    item=claim(delivery_id)
     if not item:
         return None
     client=client or HubClient()
@@ -168,13 +157,40 @@ def list_deliveries(limit=50):
 
 def resolve(delivery_id):
     with db.get_db() as conn:
-        conn.execute("UPDATE deliveries SET status='resolved',resolution='Acknowledged without resend',updated_at=? WHERE delivery_id=? AND status IN ('unknown','partial','blocked')",(stamp(),delivery_id))
+        conn.execute('BEGIN IMMEDIATE')
+        row=conn.execute('SELECT status,lease_until FROM deliveries WHERE delivery_id=?',(delivery_id,)).fetchone()
+        if not row:
+            raise ValueError('Delivery not found')
+        if row['status']=='sending' and (row['lease_until'] or 0)>time.time():
+            raise ValueError('Delivery is actively sending; wait for its result or lease expiry')
+        if row['status'] in ('sent','resolved'):
+            return
+        conn.execute("UPDATE delivery_parts SET status='unknown',error='worker_interrupted' WHERE delivery_id=? AND status='sending'",(delivery_id,))
+        conn.execute("UPDATE deliveries SET status='resolved',resolution='Acknowledged without resend',updated_at=? WHERE delivery_id=?",(stamp(),delivery_id))
 
 
 def retry(delivery_id):
     with db.get_db() as conn:
         conn.execute('BEGIN IMMEDIATE')
+        if not conn.execute('SELECT 1 FROM deliveries WHERE delivery_id=?',(delivery_id,)).fetchone():
+            raise ValueError('Delivery not found')
         unsafe=conn.execute("SELECT 1 FROM delivery_parts WHERE delivery_id=? AND status IN ('unknown','partial','sending')",(delivery_id,)).fetchone()
         if unsafe:
             raise ValueError('Uncertain or partial sends cannot be automatically retried')
         conn.execute("UPDATE deliveries SET status='queued',next_attempt=0,updated_at=? WHERE delivery_id=? AND status IN ('retryable','blocked')",(stamp(),delivery_id))
+
+
+def inspect(delivery_id):
+    """Server-only diagnostic projection; no token or recipient addresses."""
+    with db.get_db() as conn:
+        row=conn.execute('''SELECT delivery_id,report_id,target_date,channel,status,created_at,updated_at,resolution
+            FROM deliveries WHERE delivery_id=?''',(delivery_id,)).fetchone()
+        if not row:
+            raise ValueError('Delivery not found')
+        parts=[]
+        for part in conn.execute('SELECT part,status,attempts,error,receipt FROM delivery_parts WHERE delivery_id=? ORDER BY part',(delivery_id,)):
+            value=dict(part)
+            receipt=json.loads(value.pop('receipt') or '{}')
+            value['request_id']=receipt.get('request_id')
+            parts.append(value)
+        return dict(row,parts=parts)

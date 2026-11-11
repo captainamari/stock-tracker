@@ -146,10 +146,15 @@ def initialize():
     if not settings().index_universe_enabled:
         return
     from lib.config import sync_watchlist
+    fresh = not db.get_watchlist(enabled_only=False)
     sync_watchlist()  # Existing database entries remain authoritative.
     with db.get_db() as conn:
         conn.execute('BEGIN IMMEDIATE')
         seed(conn)
+        if fresh:
+            from lib.symbols import DEFAULT_WATCHLIST
+            conn.executemany('UPDATE watchlist SET is_public=1 WHERE symbol=?',
+                             [(s,) for s in DEFAULT_WATCHLIST['symbols']])
 
 
 def prepare_run(job, fetcher=None):
@@ -195,7 +200,9 @@ def prepare_run(job, fetcher=None):
         assets = jobs.dependencies(conn)
         conn.execute('DELETE FROM run_assets WHERE run_id=?', (job['run_id'],))
         jobs.insert_assets(conn, job['run_id'], assets)
-        state = conn.execute('SELECT snapshot_id FROM universe_state').fetchone()
+        state = conn.execute('SELECT snapshot_id,last_error FROM universe_state').fetchone()
+        conn.execute('UPDATE update_runs SET universe_status=? WHERE run_id=?',
+                     ('retained_after_refresh_failure' if state and state['last_error'] else 'frozen' if state else 'unavailable',job['run_id']))
         conn.execute('UPDATE update_runs SET total=?,universe_snapshot=?,universe_prepared=1 WHERE run_id=?',
                      (len(assets), state[0] if state and settings().index_universe_enabled else None, job['run_id']))
 

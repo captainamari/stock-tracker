@@ -46,17 +46,11 @@ def tick(now=None):
     with db.get_db() as conn:
         conn.execute('BEGIN IMMEDIATE')
         config=get_schedule(conn)
-        for kind, clock in [('update',config['update_time']),('notify',config['notify_time'])]:
-            if kind=='notify' and not config['enabled']:
-                continue
+        for kind, clock in [('update',config['update_time'])]:
             due=datetime.combine(local.date(),time.fromisoformat(clock),tzinfo=local.tzinfo)
             if local<due or conn.execute('SELECT 1 FROM schedule_fires WHERE kind=? AND local_date=?',(kind,str(local.date()))).fetchone():
                 continue
-            if kind=='update':
-                identifier=request_update('scheduled',due,conn)
-            else:
-                from lib.delivery import queue_daily
-                identifier=queue_daily(conn,completed_session(due),str(local.date()),config['channel'])
+            identifier=request_update('scheduled',due,conn)
             conn.execute('INSERT INTO schedule_fires VALUES (?,?,?)',(kind,str(local.date()),identifier))
             fired.append((kind,identifier))
     return fired

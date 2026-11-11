@@ -127,7 +127,7 @@ def calculate_run(job):
 
 
 def compute_pulse(conn, job):
-    """Aggregate only this run; public breadth includes public stocks only."""
+    """Aggregate only this run; breadth uses frozen index membership, irrespective of visibility."""
     indices, distributions = {}, {}
     for symbol in ('SPY','QQQ','IWM','VIX'):
         asset = conn.execute('SELECT * FROM run_assets WHERE run_id=? AND symbol=?',(job['run_id'],symbol)).fetchone()
@@ -138,20 +138,12 @@ def compute_pulse(conn, job):
         indices[symbol] = market_pulse.analyze_vix(frame) if symbol=='VIX' else market_pulse.analyze_index(symbol,frame) if len(frame)>=252 else None
         if symbol in ('SPY','QQQ'):
             distributions[symbol] = market_pulse.analyze_distribution_days(symbol,frame)
-    rows = conn.execute('''SELECT d.payload FROM daily_results d JOIN run_assets a USING(run_id,symbol)
-        WHERE d.run_id=? AND d.strategy_id='stage2_us' AND a.is_public=1 AND a.role='stock' ''',(job['run_id'],)).fetchall()
-    results = [json.loads(r[0]) for r in rows]
-    ok = [r for r in results if r['status']=='ok']
-    breadth = dict(total=len(results), analyzed=len(ok), stage2_count=sum(r['is_signal'] for r in ok))
-    if ok:
-        n = len(ok)
-        breadth['above_sma50_pct'] = sum(r['metrics']['price']>r['metrics']['sma50'] for r in ok)/n*100
-        breadth['above_sma200_pct'] = sum(r['metrics']['price']>r['metrics']['sma200'] for r in ok)/n*100
-        breadth['stage2_pct'] = breadth['stage2_count']/n*100
-        breadth['up_5d_pct'] = sum((r['metrics'].get('chg_5d') or 0)>0 for r in ok)/n*100
-        breadth['breadth_score'] = round(breadth['above_sma50_pct']*.35+breadth['above_sma200_pct']*.25+breadth['stage2_pct']*.25+breadth['up_5d_pct']*.15)
-    complete = all(indices.values()) and len(ok)==len(results) and bool(ok)
-    score, components = market_pulse.calculate_composite_score(indices['SPY'],indices['QQQ'],indices['IWM'],indices['VIX'],breadth if ok else None)
+    from lib.breadth import aggregate
+    breadth = aggregate(conn, job['run_id'])
+    complete = (all(indices.values()) and breadth['total'] > 0 and breadth['missing'] == 0
+                and all(n == breadth['total'] for n in breadth['denominators'].values()))
+    score, components = market_pulse.calculate_composite_score(indices['SPY'],indices['QQQ'],indices['IWM'],indices['VIX'],
+        breadth if breadth['breadth_score'] is not None else None)
     regime = market_pulse.determine_regime(score,indices['SPY'],indices['VIX'],distributions)[0] if complete else None
     return clean(dict(status='ok' if complete else 'insufficient_data', date=job['target_date'], regime=regime,
                       score=score if complete else None, indices=indices, breadth=breadth, distribution_days=distributions))

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily owner report at 06:00 America/New_York
+
+[Timer]
+OnCalendar=*-*-* 06:00:00 America/New_York
+Persistent=true
+AccuracySec=1min
+Unit=stock-tracker-digest.service
+
+[Install]
+WantedBy=timers.target

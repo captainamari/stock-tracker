@@ -22,11 +22,6 @@ services:
     command: ['python', '-m', 'lib.cli', 'scheduler']
     healthcheck:
       disable: true
-  notify-worker:
-    <<: *runtime
-    command: ['python', '-m', 'lib.cli', 'notify-worker']
-    healthcheck:
-      disable: true
 
 volumes:
   stock-data:
