@@ -1,6 +1,6 @@
 # Stock Tracker
 
-[English](README_EN.md) · [部署与升级](DEPLOY.md) · [验收记录](docs/progress/GUEST_WATCHLIST_RESULTS.md)
+[English](README_EN.md) · [部署与升级](DEPLOY.md) · [UI 验收记录](docs/progress/COMPACT_STOCK_UI_RESULTS.md) · [收藏与通知历史验收](docs/progress/GUEST_WATCHLIST_RESULTS.md)
 
 免登录的美股观察网站，保留 FastAPI、Jinja2、原生 JavaScript、Chart.js、SQLite WAL、yfinance 和 notification-hub。概览和“我的关注”由当前浏览器收藏驱动；“发现股票”提供完整公开目录。服务器采集池、浏览器收藏和所有者私人通知名单互不覆盖。
 
@@ -30,7 +30,15 @@ Windows PowerShell 使用 `$env:STOCK_DB='C:\absolute\stock_tracker.db'`，其�
 
 收藏保存在当前浏览器，清除网站数据后会丢失，不会自动跨设备同步。存储受限或写入失败会持续提示，当前标签页仍可使用；损坏或未知版本可通过导入/恢复默认修复。导入只接收明确格式并验证公开覆盖，未知/私人代码拒绝导入，不会添加服务器采集资产。
 
-概览四策略候选、计数、确认变化和异常均按收藏计算；固定市场背景不随收藏变化。SPY/QQQ 仅展示行情与适用技术指标。详情保留价格图、历史导出、策略条件和日期口径。网页日报默认“按当前收藏查看该日行情”，可显式切换全部公开范围；旧纯文本报告只能显式展开完整公开快照。私人历史报告始终不可公开访问。
+概览先展示日期状态与紧凑市场摘要，再显示关注表格；“我的关注”直接管理列表；“发现股票”搜索完整公开目录。三页共用语义化股票表格，桌面默认策略列，手机默认行情列，可切换“行情 / 策略”。表头可排序，策略评分排序必须先选具体策略；所有排序、筛选先处理完整集合，再分页。每页数量位于分页区。普通行约 50px，手机仅固定股票身份列，所有行共用表格横向滚动。
+
+星标可直接收藏/取消。需要调整顺序时点击“编辑列表”；只有无搜索/策略/状态筛选、且按收藏顺序查看时可操作，移动对应完整收藏列表。“添加股票”进入发现页；“管理收藏”收纳导入、导出、恢复默认与清空。导入按钮打开文件选择器，覆盖操作均需确认，Escape 可关闭管理菜单。手机高级筛选默认折叠。
+
+策略计数条可点击筛选候选，计数使用“我的关注”或“全部股票”的完整范围，不受搜索及其他筛选影响。同一股票可命中多种策略，数量不能相加当作股票数。确认变化单独呈现；前后有效交易日不齐时明确无法确认。固定市场广度及其有效/应统计/缺失分母不随收藏变化。SPY/QQQ 不适用的策略明确显示“不适用”。“历史数据可用”和“等待最新批次”分别表达。
+
+详情保留历史导出、条件与指标，并提供 1M/3M/6M/1Y/全部图表区间；只筛选当前批次保存的日线，历史不足不补造数据。策略摘要先展示，完整条件与指标按需展开。返回链接保留来源页的筛选、排序、页码、列组合及页面/表格滚动位置（浏览器会话存储可用时）。
+
+网页日报默认“按当前收藏查看该日行情”，可显式切换全部公开范围；表格复用同一列定义，保留冻结条件、前日比较及20交易日历史走势展开，历史市场背景折叠。价格、来源、图表与策略绑定原报告批次。旧纯文本报告只能显式展开完整公开快照。私人历史报告始终不可公开访问。后续加载保留已有结果并标记忙碌，失败可重试，旧响应不会覆盖新筛选。
 
 `GET /api/assets?symbols=AAPL,SPY&batch=...` 按集合选择后筛选分页；空 `symbols=` 返回空集合，省略表示发现目录。支持 search、strategy、match、sort、page、size 和公开 report_id。每页20/50/100条，所有代码均由服务器验证当前和冻结时的公开权限，禁用缓存，私人条目仅返回无数据的“不可用”占位。GET 不调用 Yahoo、不刷新名单、不排队任务。首屏只服务端渲染市场背景，收藏数据与背景锁定同一批次。
 
@@ -67,9 +75,11 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 node --check web/static/js/main.js
 node --check web/static/js/watchlist.js
+node --check web/static/js/stock-table.js
+node tests/frontend.test.cjs
 python -m compileall -q lib web scripts
 python -m playwright install chromium
 python -m scripts.browser_acceptance --database /new/isolated-browser.db --artifacts /tmp/browser-evidence
 ```
 
-浏览器验收只接受新库，生成明确标记的合成行情。保留增量采集、策略、统一批次、历史报告和 Hub 契约回归，不把合成数据当成真实市场数据。没有执行生产部署、真实发送或新的全市场性能实验。
+浏览器验收只接受新库，生成两个已发布交易日的明确标记合成行情，并检查五类页面在 375、390、768、1024、1440、1920px 的布局及真实交互。输出 browser-results.json、compact-results.json 和代表性截图。保留增量采集、策略、统一批次、历史报告和 Hub 契约回归，不把合成数据当成真实市场数据。没有执行生产部署、真实发送或新的全市场性能实验。

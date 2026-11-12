@@ -166,7 +166,6 @@ def test_paragraph_splitting_preserves_cards_and_unicode():
 
 def test_missing_session_sparkline_keeps_gap(database):
     from tests.fixtures import bars
-    from web.deps import spark_path
     seed_watchlist()
     labels(['AAA'],followed=True)
     def missing(symbol,start,target):
@@ -176,7 +175,7 @@ def test_missing_session_sparkline_keeps_gap(database):
     with db.get_db() as conn:
         a=load_document(conn,run+'-personal')['assets'][0]
         assert len(a['sparkline'])==20 and a['sparkline'][-5] is None
-        assert spark_path(a['sparkline']).count('M')==2
+        # The shared browser renderer's two SVG segments are covered by compact_acceptance.
 
 
 def test_notification_history_available_to_server_only(client):

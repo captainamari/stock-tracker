@@ -17,6 +17,8 @@ jobs:
           node-version: '22'
       - run: node --check web/static/js/main.js
       - run: node --check web/static/js/watchlist.js
+      - run: node --check web/static/js/stock-table.js
+      - run: node tests/frontend.test.cjs
       - run: python -m playwright install --with-deps chromium
       - run: python -m scripts.browser_acceptance --database /tmp/stock-browser.db --artifacts /tmp/browser-evidence
       - uses: actions/upload-artifact@v4
