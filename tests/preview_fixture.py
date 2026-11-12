@@ -22,6 +22,7 @@ if __name__=='__main__':
         result=bars(symbol,start,target,short=symbol=='SHORT')
         return result.iloc[:-1] if symbol=='STALE' else result
     run=update(source,now=datetime(2026,10,20,8,tzinfo=timezone.utc))
+    run=update(source,now=datetime(2026,10,21,8,tzinfo=timezone.utc))
     db.upsert_watchlist([{'symbol':'PENDING','name':'SYNTHETIC pending'}])
     with db.get_db() as conn:
         conn.execute("UPDATE watchlist SET is_public=1 WHERE symbol='PENDING'")

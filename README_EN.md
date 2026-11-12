@@ -63,9 +63,19 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 node --check web/static/js/main.js
 node --check web/static/js/watchlist.js
+node --check web/static/js/stock-table.js
+node tests/frontend.test.cjs
 python -m compileall -q lib web scripts
 python -m playwright install chromium
 python -m scripts.browser_acceptance --database /new/isolated-browser.db --artifacts /tmp/browser-evidence
 ```
 
 Browser acceptance refuses an existing DB and uses explicitly synthetic prices. Existing incremental prices, strategies, publication and report regression tests remain. Hub contract testing is documented in operations. Synthetic data and capacity checks do not establish production readiness or real market coverage.
+
+## Compact stock tables
+
+Overview, My watchlist and Discover share a semantic stock table. Use Market or Strategies columns; mobile defaults to Market and collapses advanced filters. Header sorting applies before pagination. Strategy-score sorting requires a selected strategy. Counts cover the complete watchlist/public scope before search and filters; overlapping strategies cannot be summed as distinct stocks.
+
+Use stars to save stocks. Edit list enables keyboard-accessible order controls only with favorite order and no filters. Manage favorites contains JSON import/export and confirmed reset/clear actions; import opens a file chooser. Failed requests retain the last successful results with Retry.
+
+Reports retain their historical batch, comparisons and expandable saved details. Ticker charts offer 1M/3M/6M/1Y/All using saved bars only. Return links restore source filters, page, columns and scroll when session storage is available. The browser acceptance command now checks five pages at six widths and writes compact-results.json. See [Chinese UI acceptance record](docs/progress/COMPACT_STOCK_UI_RESULTS.md).
