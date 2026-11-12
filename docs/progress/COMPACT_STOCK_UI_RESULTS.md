@@ -33,7 +33,7 @@
 | Prettier 检查新 JS/CSS 与 Node 测试 | 通过；未增加格式化运行依赖 |
 | `python -m scripts.browser_acceptance --database <新隔离路径> --artifacts <路径>` | 通过：原有 8 组场景 + `compact_acceptance` 的 11 组专项检查；JS page errors 为 0 |
 | notification-hub 固定提交契约 | 通过，提交 `7c6ef039047e9adae7c6ca14d4e32204f352957c`，6 类响应，外部发送 0 |
-| Linux systemd / GitHub CI | PR 创建后记录运行链接与结果；Windows 本机未验证 systemd 原生执行 |
+| Linux systemd / GitHub CI | [PR CI #28](https://github.com/captainamari/stock-tracker/actions/runs/43146943316) 全部通过（代码提交 `e4bfdbf`）：107 Python tests、编译、3份 JS 语法、前端边界、Chromium、artifact、systemd unit/calendar、Hub 契约；Windows 本机未运行 systemd |
 
 浏览器实际操作包括：独立访客/多标签收藏、默认/已有/主动空列表、导入导出及文件选择器、覆盖确认/取消、顺序、搜索/策略/状态、计数不随筛选改变、列头排序、分页、评分策略绑定、快速连续请求顺序、失败保留内容与键盘重试、收藏焦点与滚动、管理菜单/筛选/分页/详情展开键盘操作、历史前后报告导航和详情批次、返回筛选/页码/列组合/滚动、图表区间/历史不足/空行情、SVG 缺失日不连线、长名称、零涨跌、失败/过期/待更新/数据不足/基准不适用。
 
