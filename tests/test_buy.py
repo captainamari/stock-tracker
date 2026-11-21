@@ -2,8 +2,33 @@ import json
 import numpy as np
 import pandas as pd
 import pytest
+import sqlite3
 from lib.buy import analyze, load_parameters
 from lib.volume_price import session_context
+
+
+def test_recalculation_heartbeat_retries_busy_and_stops_on_lost_lease(monkeypatch):
+    from lib import jobs
+    from lib.recalculate import _heartbeat
+    class Stop:
+        def wait(self, seconds):
+            return False
+    busy=sqlite3.OperationalError('database is locked')
+    busy.sqlite_errorcode=sqlite3.SQLITE_BUSY
+    calls=[]
+    def pulse(job):
+        calls.append(job)
+        if len(calls)==1:
+            raise busy
+        raise jobs.LostLease('finished or superseded')
+    monkeypatch.setattr(jobs,'heartbeat',pulse)
+    _heartbeat({'run_id':'test'},Stop())
+    assert len(calls)==2
+    unexpected=sqlite3.OperationalError('disk I/O error')
+    unexpected.sqlite_errorcode=sqlite3.SQLITE_IOERR
+    monkeypatch.setattr(jobs,'heartbeat',lambda job: (_ for _ in ()).throw(unexpected))
+    with pytest.raises(sqlite3.OperationalError,match='disk I/O'):
+        _heartbeat({},Stop())
 
 
 def bars(target='2026-10-20'):

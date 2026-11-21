@@ -1,9 +1,23 @@
 """Publish current rules against the latest frozen inputs, without downloads/sends."""
 import threading
+import sqlite3
 import time
 import uuid
 from lib import db, jobs
 from lib.settings import settings, stamp
+
+
+def _heartbeat(job, stop):
+    while not stop.wait(15):
+        try:
+            jobs.heartbeat(job)
+        except jobs.LostLease:
+            return
+        except sqlite3.OperationalError as exc:
+            # Publishing a large frozen report holds the write transaction.
+            # Retry contention; heartbeat/progress still fence the lease.
+            if getattr(exc, 'sqlite_errorcode', None) not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                raise
 
 
 def latest():
@@ -30,11 +44,7 @@ def latest():
                      (run_id,source['run_id']))
         job=dict(conn.execute('SELECT * FROM update_runs WHERE run_id=?',(run_id,)).fetchone())
     stop=threading.Event()
-    def heartbeat():
-        while not stop.wait(15):
-            try: jobs.heartbeat(job)
-            except jobs.LostLease: return
-    thread=threading.Thread(target=heartbeat,daemon=True)
+    thread=threading.Thread(target=_heartbeat,args=(job,stop),daemon=True)
     thread.start()
     keepalive=db.get_connection()
     try:
