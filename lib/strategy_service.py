@@ -16,6 +16,7 @@ from scripts.bottom_fisher import analyze_bottom
 from scripts.buying_checklist import analyze_buying_checklist
 from scripts import market_pulse
 from lib.technical_analysis import compute_technical_indicators
+from lib.volume_price import analyze as analyze_volume_price, load_parameters
 
 STRATEGIES = ('stage2_us','contraction_us','bottom_fisher_us','checklist_us')
 RULE_VERSION = 'v1'
@@ -49,7 +50,7 @@ def outcome(strategy, status, reason=None, raw=None, signal=False):
                 metrics=value, weekly_mode='provisional' if strategy=='checklist_us' else None)
 
 
-def evaluate_asset(asset, frame, spy, prior, target):
+def evaluate_asset(asset, frame, spy, prior, target, volume_parameters=None):
     values = {}
     source_status = asset['status']
     if source_status != 'ok':
@@ -99,10 +100,13 @@ def evaluate_asset(asset, frame, spy, prior, target):
         values['technical'] = outcome('technical','ok',raw=compute_technical_indicators(frame)) if frame is not None and len(frame)>=50 else outcome('technical','insufficient_data','history_below_50_sessions')
     except Exception as exc:
         values['technical'] = outcome('technical','failed',f'calculation:{type(exc).__name__}')
+    if asset['symbol'] not in ('VIX', '^VIX'):
+        values['technical']['metrics']['volume_price'] = analyze_volume_price(frame, target, volume_parameters)
     return values
 
 
 def calculate_run(job):
+    volume_parameters = load_parameters()
     with db.get_db() as conn:
         assets = [dict(r) for r in conn.execute('SELECT * FROM run_assets WHERE run_id=? ORDER BY symbol',(job['run_id'],))]
         prior = {(r['symbol'],r['strategy_id']):dict(r) for r in conn.execute('SELECT * FROM candidate_states')}
@@ -112,7 +116,7 @@ def calculate_run(job):
         with db.get_db() as conn:
             rows = read_prices(conn, asset['symbol'], job['target_date'], asset['input_revision'] or 0)
         frame = dataframe(rows)
-        results = evaluate_asset(asset, frame, spy, prior, job['target_date'])
+        results = evaluate_asset(asset, frame, spy, prior, job['target_date'], volume_parameters)
         with db.get_db() as conn:
             conn.execute('BEGIN IMMEDIATE')
             jobs.fence(conn,job)
@@ -138,6 +142,10 @@ def compute_pulse(conn, job):
         indices[symbol] = market_pulse.analyze_vix(frame) if symbol=='VIX' else market_pulse.analyze_index(symbol,frame) if len(frame)>=252 else None
         if symbol in ('SPY','QQQ'):
             distributions[symbol] = market_pulse.analyze_distribution_days(symbol,frame)
+        if indices[symbol] and symbol != 'VIX':
+            technical = conn.execute("SELECT payload FROM daily_results WHERE run_id=? AND symbol=? AND strategy_id='technical'",
+                                     (job['run_id'], symbol)).fetchone()
+            indices[symbol]['volume_price'] = json.loads(technical[0]).get('metrics', {}).get('volume_price') if technical else None
     from lib.breadth import aggregate
     breadth = aggregate(conn, job['run_id'])
     complete = (all(indices.values()) and breadth['total'] > 0 and breadth['missing'] == 0
@@ -145,5 +153,14 @@ def compute_pulse(conn, job):
     score, components = market_pulse.calculate_composite_score(indices['SPY'],indices['QQQ'],indices['IWM'],indices['VIX'],
         breadth if breadth['breadth_score'] is not None else None)
     regime = market_pulse.determine_regime(score,indices['SPY'],indices['VIX'],distributions)[0] if complete else None
+    reasons = []
+    if complete:
+        if indices['VIX']['value'] >= 30:
+            reasons.append('VIX ≥ 30')
+        if indices['SPY'].get('pct_vs_sma200', 0) < -3:
+            reasons.append('SPY 低于 MA200 超过3%')
+        pressure = max((v['count'] for v in distributions.values() if v), default=0)
+        if pressure >= 5:
+            reasons.append(f'有效派发日最多 {pressure} 次，触发市场状态限制')
     return clean(dict(status='ok' if complete else 'insufficient_data', date=job['target_date'], regime=regime,
-                      score=score if complete else None, indices=indices, breadth=breadth, distribution_days=distributions))
+                      score=score if complete else None, state_factors=reasons, indices=indices, breadth=breadth, distribution_days=distributions))

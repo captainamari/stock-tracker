@@ -3,5 +3,6 @@
   "profile": "owner",
   "symbols": ["NVDA", "MSFT", "GOOG", "INTC"],
   "channel": "trading",
-  "mode": "compact"
+  "mode": "compact",
+  "strategies": ["stage2_us", "contraction_us", "bottom_fisher_us"]
 }

@@ -1,78 +1,93 @@
-📊 Stock Tracker · {{ d.target_date }}
-{{ {'owner':'私人配置日报 / Owner digest','all':'公开日报 / Public','following':'我的关注 / Following','held':'我的持有 / Held','personal':'关注或持有 / Following or held'}[d.scope] }}
-{{ d.assets|length }} tickers · {{ d.missing }} 行情异常 / price unavailable · {{ d.changes }} 状态变化 / changes
-{{ d.get('strategy_missing',0) }} 股票策略数据不全 / stocks with incomplete strategy inputs
-{% if d.scope not in ('all','owner') %}
-关注 {{ d.followed }} · 持有 {{ d.held }} · 名单已按本日报冻结 / Frozen membership
+{% macro volume_details(v) -%}
+{% if v and v.get('counts') %}
+{% set c=v.counts %}
+近{{ v.parameters.window_sessions }}日：放量涨{{ c.up_high }} / 缩量跌{{ c.down_low }} / 放量跌{{ c.down_high }} / 缩量涨{{ c.up_low }} / 其他{{ c.up_normal+c.down_normal+c.flat }} / 未知{{ c.unknown }}
+涨/跌日均量比 {{ fmt(v.up_down_volume_ratio) }}x（上涨{{ v.up_days }}天/下跌{{ v.down_days }}天）
+{% if v.sequence=='pullback' %}结构：窗口内放量上涨后，最近{{ v.sequence_days }}日连续缩量回调
+{% elif v.sequence=='rebound' %}结构：窗口内放量下跌后，最近{{ v.sequence_days }}日连续缩量反弹
 {% endif %}
-{% if not d.assets %}本范围没有股票 / No symbols in this scope.
+{% endif %}
+{%- endmacro %}
+📊 美股收盘简报｜{{ d.target_date }}（美东）
+{{ {'owner':'私人通知名单','all':'公开范围','following':'我的关注','held':'我的持有','personal':'关注或持有'}[d.scope] }} {{ d.assets|length }}只｜行情有效 {{ d.assets|length-d.missing }}/{{ d.assets|length }}
+
+🌐 市场概况
+{% set regimes={'bullish':'🟢 偏强','neutral':'🟡 中性','cautious':'🟠 谨慎','bearish':'🔴 偏弱'} %}
+市场状态：{{ regimes.get(d.pulse.regime,'数据不足，暂不判断') }}{% if d.pulse.score is not none %}｜综合评分 {{ d.pulse.score }}/100{% endif %}
+
+{% for reason in d.pulse.get('state_factors',[]) %}原因：{{ clean(reason) }}
+{% endfor %}
+{% for symbol in ('SPY','QQQ') %}
+{% set item=d.pulse.indices.get(symbol) %}
+{{ symbol }} {% if item %}${{ fmt(item.get('price')) }}｜{{ fmt(item.get('chg_1d'),true) }}
+{{ volume_summary(item.get('volume_price')) }}
+MA50：{{ ('上方' if item.pct_vs_sma50>=0 else '下方') if item.get('pct_vs_sma50') is not none else '未知' }}｜MA200：{{ ('上方' if item.pct_vs_sma200>=0 else '下方') if item.get('pct_vs_sma200') is not none else '未知' }}
+{{ volume_details(item.get('volume_price')) }}
+{% else %}行情缺失
+{% endif %}
+{% set dist=d.pulse.distribution_days.get(symbol) %}
+派发日：今日{{ ('是' if dist.latest_is_distribution else '否') if dist else '未知' }}｜近25日有效 {{ dist.count if dist else '—' }}次
+
+{% endfor %}
+{% set iwm=d.pulse.indices.get('IWM') %}{% set vix=d.pulse.indices.get('VIX') %}
+IWM {{ fmt(iwm.get('chg_1d') if iwm else none,true) }}｜VIX {{ fmt(vix.get('value') if vix else none) }}（{{ fmt(vix.get('chg_1d') if vix else none,true) }}）
+{% set b=d.pulse.breadth %}
+广度口径：{{ '标普500 ∪ 纳指100' if b.get('version')==2 else '历史公开观察池' }}
+站上MA50 {{ fmt(b.get('above_sma50_pct')) }}% / MA200 {{ fmt(b.get('above_sma200_pct')) }}%
+Stage 2 {{ b.stage2_count }}/{{ b.analyzed }}｜有效/应统计 {{ b.analyzed }}/{{ b.get('total',0) }}｜缺失 {{ b.get('missing',0) }}
+{% if b.get('denominators') %}MA50有效分母 {{ b.denominators.get('above_sma50_pct',0) }}｜MA200有效分母 {{ b.denominators.get('above_sma200_pct',0) }}
 {% endif %}
 
-🌐 市场背景 / Market context
-{{ d.pulse.regime or '数据不足 / Insufficient data' }}{% if d.pulse.score is not none %} · {{ d.pulse.score }}/100{% endif %}
-
-{% for symbol,item in d.pulse.indices.items() %}
-{{ symbol }}: {% if item %}{{ fmt(item.get('price',item.get('value'))) }}{% if item.get('chg_1d') is not none %} · {{ fmt(item.chg_1d,true) }}{% endif %}{% else %}数据缺失 / unavailable{% endif %}
-
-{% endfor %}
-{% for symbol,item in d.pulse.distribution_days.items() if item %}
-{{ symbol }} 派发日 / Distribution: {{ item.count }} / 25 sessions
-{% endfor %}
-{{ '指数并集 / Index union' if d.pulse.breadth.get('version')==2 else '历史公开观察池 / Legacy public universe' }}: Stage2 {{ d.pulse.breadth.stage2_count }}/{{ d.pulse.breadth.analyzed }} assessed · {{ d.pulse.breadth.get('total',0) }} expected · {{ d.pulse.breadth.get('missing',0) }} missing
-
-🔔 今日变化 / Changes
-{% for a in d.assets if a.changes %}
-{{ clean(a.symbol) }}{% if a.get('is_held') %}［持有 / Held］{% endif %}: {% for c in a.changes %}{{ names[c.strategy] }} {{ '新增 / Entered' if c.change=='entry' else '退出 / Exited' }}; {% endfor %}
-
-{% else %}
-无已确认的新增或退出 / No confirmed entries or exits.
-{% endfor %}
-
-{% for strategy,group in groups.items() if group.matched or group.near %}
-{{ names[strategy] }} · ✓ {{ group.matched|length }} · 接近 / Near {{ group.near|length }}
-{% for a in (group.matched+group.near)[:5 if compact else 10000] %}
-{% set r=a.strategies[strategy] %}{% set m=r.metrics %}{% set nested=m.get('metrics',{}) %}
-{{ clean(a.symbol) }}{% if a.get('is_held') %}［持有 / Held］{% endif %} ${{ fmt(a.price) }} · {{ fmt(a.change_1d,true) }}
-{{ '✓ 匹配 / Match' if r.is_signal else '◒ 接近 / Near' }} {{ '▓' * r.passed }}{{ '░' * (r.total-r.passed) }} {{ r.passed }}/{{ r.total }}{% if r.score is not none %} · {{ r.score }}/100{% endif %}{% if r.previous %} (此前 / prior {{ r.previous.passed }}/{{ r.total }}{% if r.previous.score is not none %}, {{ r.previous.score }}pts{% endif %}){% endif %}
-
-5D {{ fmt(m.get('chg_5d'),true) }} · 20D {{ fmt(m.get('chg_20d'),true) }}
-{% if strategy=='stage2_us' %}
-距高点 / From high {{ fmt(m.get('pct_from_high'),true) }} · 6M {{ fmt(m.get('stock_return_6m'),true) }} · SPY 6M {{ fmt(m.get('spy_return_6m'),true) }}
-均线参考 / MA reference: MA50 ${{ fmt(m.get('sma50')) }} · MA150 ${{ fmt(m.get('sma150')) }}
-{% elif strategy=='contraction_us' %}
-BBW percentile {{ fmt(nested.get('bbw_percentile')) }} · Vol {{ fmt(nested.get('vol_ratio')) }}x · Stage2 {{ m.get('days_in_stage2','—') }} days
-均线参考 / MA reference: MA10 ${{ fmt(m.get('sma10')) }} · MA50 ${{ fmt(m.get('sma50')) }}
-{% elif strategy=='bottom_fisher_us' %}
-RSI {{ fmt(nested.get('rsi')) }} · Vol {{ fmt(nested.get('vol_ratio')) }}x · High {{ fmt(nested.get('pct_from_52w_high'),true) }}
-{% if nested.get('rsi_divergence') %}RSI 底背离 / bullish divergence{% endif %}{% if nested.get('macd_divergence') %} · MACD 底背离 / bullish divergence{% endif %}
-{% else %}
-Week {{ clean(m.get('weekly_impulse','—')) }} · {{ m.get('impulse_streak','—') }}w · RSI {{ fmt(nested.get('rsi')) }} · Vol {{ fmt(nested.get('vol_ratio')) }}x
-周线包含本周暂态 / Includes provisional week.
-{% endif %}
-{% for key,value in r.conditions.items() if value is sameas false %}
-  └ ❌ {{ clean(r.details.get(key,key)) }}
-{% endfor %}
-
-{% endfor %}
-{% if compact and group.matched|length + group.near|length > 5 %}… 精简模式省略其余策略详情 / Additional strategy details omitted in compact mode{% endif %}
-
-{% endfor %}
-📋 全部每日行情 / All daily prices
-{% for a in d.assets %}
-{{ clean(a.symbol) }}{% if a.get('is_held') %}［持有 / Held］{% endif %} ${{ fmt(a.price) }} · {{ fmt(a.change_1d,true) }} · {{ a.actual_date or '—' }} · {{ a.status }}
-{% else %}
-本范围没有股票 / No symbols in this scope.
-{% endfor %}
-{% if d.missing %}
-⚠ 数据异常 / Data unavailable
-{% for a in d.assets if a.status!='ok' %}{{ clean(a.symbol) }} · {{ a.actual_date or '—' }} · {{ a.status }}
-{% endfor %}
-{% endif %}
-{% if d.get('strategy_missing',0) %}
-策略数据不全 / Incomplete strategy data:
-{% for a in d.assets if a.get('role')!='benchmark' %}{% for strategy in names if a.strategies.get(strategy,{}).get('status')!='ok' %}{{ clean(a.symbol) }} · {{ names[strategy] }} · {{ a.strategies.get(strategy,{}).get('status','pending') }}
+🔔 今日变化（与前一交易日有效结果比较）
+{% set changes=namespace(found=false) %}
+{% for a in d.assets %}{% for c in a.changes if c.strategy in groups %}
+{% set changes.found=true %}
+{{ clean(a.symbol) }}：{{ names[c.strategy].split(' / ')[0] }} {{ '新增符合' if c.change=='entry' else '退出条件' }}
 {% endfor %}{% endfor %}
+{% if not changes.found %}无已确认的新增或退出。
+{% endif %}
+{% for strategy,g in groups.items() if g.comparisons < g.expected %}{{ names[strategy].split(' / ')[0] }}：{{ g.expected-g.comparisons }}只无法确认变化（前后有效数据不齐）。
+{% endfor %}
+退出条件不等于卖出；新增符合不等于新进Top 10。
+
+{% for strategy,g in groups.items() %}
+{{ {'stage2_us':'📈','contraction_us':'🔎','bottom_fisher_us':'🔄','checklist_us':'📋'}[strategy] }} {{ names[strategy].split(' / ')[0] }}｜Top 10
+有效 {{ g.valid }}/{{ g.expected }}｜符合 {{ g.matched|length }}只｜展示 {{ [g.matched|length,10]|min }}只{% if g.matched|length>10 %}｜省略 {{ g.matched|length-10 }}只{% endif %}
+
+{% if not g.matched %}{{ '有效数据中无符合项，另有数据缺失' if g.valid<g.expected else '今日没有符合条件的个股' }}。
+{% endif %}
+{% for a in g.matched[:10] %}
+{% set r=a.strategies[strategy] %}{% set m=r.metrics %}{% set nested=m.get('metrics',{}) %}
+{{ '%02d'|format(loop.index) }} {{ clean(a.symbol) }}｜{{ r.score if r.score is not none else '—' }}分｜${{ fmt(a.price) }}｜{{ fmt(a.change_1d,true) }}{% for c in a.changes if c.strategy==strategy and c.change=='entry' %} 🆕{% endfor %}{% if overlaps.get(a.symbol,0)>1 %} 🔗{{ overlaps[a.symbol] }}策略{% endif %}
+
+{{ volume_summary(a.get('volume_price')) }}
+{% set vp=a.get('volume_price') %}
+{% if compact and vp and vp.get('counts') %}
+近{{ vp.parameters.window_sessions }}日：放量涨{{ vp.counts.up_high }}/跌{{ vp.counts.down_high }}｜缩量涨{{ vp.counts.up_low }}/跌{{ vp.counts.down_low }}｜涨跌日均量比 {{ fmt(vp.up_down_volume_ratio) }}x
+{% endif %}
+{% if not compact or loop.index<=3 %}
+{% if strategy=='stage2_us' %}距高点 {{ fmt(m.get('pct_from_high'),true) }}｜6M {{ fmt(m.get('stock_return_6m'),true) }} / SPY {{ fmt(m.get('spy_return_6m'),true) }}
+{% elif strategy=='contraction_us' %}带宽分位 {{ fmt(nested.get('bbw_percentile')) }}%｜10/50日均量比 {{ fmt(nested.get('vol_ratio')) }}x
+{% elif strategy=='bottom_fisher_us' %}RSI {{ fmt(nested.get('rsi')) }}｜10/50日均量比 {{ fmt(nested.get('vol_ratio')) }}x{% if nested.get('rsi_divergence') %}｜RSI底背离{% endif %}{% if nested.get('macd_divergence') %}｜MACD底背离{% endif %}
+
+{% else %}周线 {{ clean(m.get('weekly_impulse','—')) }}｜{{ r.passed }}/{{ r.total }}条件（含本周暂态）
+{% endif %}
+{% if not compact %}{{ volume_details(a.get('volume_price')) }}
+{% endif %}
 {% endif %}
 
-评分不代表胜率；收缩候选不是已确认突破。 / Scores are not probabilities; contraction is not a confirmed breakout.
-公开概览 / Public overview: {{ d.url if d.scope=='owner' else d.url.split('/reports/')[0] }}
+{% endfor %}
+{% if g.near %}接近符合 {{ g.near|length }}只，不纳入榜单。
+{% endif %}
+{% if strategy=='contraction_us' %}收缩候选不代表确认突破。
+{% endif %}
+
+{% endfor %}
+{% if d.missing or d.get('strategy_missing',0) %}
+⚠ 数据异常：行情 {{ d.missing }}只｜策略不全 {{ d.get('strategy_missing',0) }}只
+{% for a in d.assets if a.status!='ok' %}{{ clean(a.symbol) }}：行情不可用（{{ a.actual_date or '无日期' }}）
+{% endfor %}
+{% endif %}
+量倍数基准见量价参数；默认当日量/此前20个完整交易日均量，半日不判量价。
+派发按项目规则识别；SPY/QQQ为ETF成交量。评分非胜率。
+公开概览：{{ d.url if d.scope=='owner' else d.url.split('/reports/')[0] }}

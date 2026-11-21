@@ -2,6 +2,12 @@
 import re
 
 METRICS = {
+    'up_days': ('Up sessions (count)', '上涨交易日（天）'),
+    'down_days': ('Down sessions (count)', '下跌交易日（天）'),
+    'up_mean_rvol': ('Mean up-session relative volume (×)', '上涨日平均相对量（倍）'),
+    'down_mean_rvol': ('Mean down-session relative volume (×)', '下跌日平均相对量（倍）'),
+    'up_down_volume_ratio': ('Mean up/down volume ratio (×)', '涨跌日均量比（倍）'),
+    'sequence_days': ('Latest pullback/rebound sessions', '最近缩量回调或反弹（天）'),
     'price': ('Adjusted close (USD)', '复权收盘价（美元）'),
     'current_close': ('Adjusted close (USD)', '复权收盘价（美元）'),
     'current_price': ('Adjusted close (USD)', '复权收盘价（美元）'),

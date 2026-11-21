@@ -1,5 +1,11 @@
 # Stock Tracker
 
+## Price/volume digest
+
+New calculation batches persist a versioned price/volume observation: daily relative volume (versus the preceding 20 full sessions), 10-session patterns, average up-day/down-day volume ratio, moving-average price trend and chronological pullback/rebound descriptions. Edit `config/volume-price.json` to tune thresholds; parameters and their fingerprint are saved with each result. Early closes and missing inputs are not treated as low volume. Existing strategy scores and eligibility remain unchanged.
+
+Owner notifications show market context and SPY/QQQ price/volume first, then confirmed changes and at most ten matches per strategy. Default lists are Stage 2, Contraction and Bottom Fisher; optional `strategies` in the private JSON can include `checklist_us`. Neither mode appends all watchlist prices. Old publications are not recomputed or resent. See [formulas, limitations and tuning](docs/VOLUME_PRICE_AND_DIGEST.md).
+
 [中文](README.md) · [Operations and upgrade](DEPLOY.md) · [Acceptance evidence](docs/progress/GUEST_WATCHLIST_RESULTS.md)
 
 A public, login-free US stock notebook using FastAPI, Jinja2, native JavaScript, Chart.js, SQLite WAL, yfinance and notification-hub. Three independent lists control collection, browser favorites and the owner's private digest.

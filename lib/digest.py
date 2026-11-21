@@ -30,8 +30,9 @@ def load_config(path, conn):
     if path.stat().st_size > 20000:
         raise ValueError('Configuration is too large')
     config = json.loads(path.read_text(encoding='utf-8'))
-    if not isinstance(config, dict) or set(config) != {'version','profile','symbols','channel','mode'}:
-        raise ValueError('Expected version, profile, symbols, channel and mode only')
+    required = {'version','profile','symbols','channel','mode'}
+    if not isinstance(config, dict) or not required <= set(config) or set(config)-required-{'strategies'}:
+        raise ValueError('Expected version, profile, symbols, channel, mode and optional strategies')
     if type(config['version']) is not int or config['version'] != 1:
         raise ValueError('Unsupported configuration version')
     for key in ('profile','channel'):
@@ -39,6 +40,13 @@ def load_config(path, conn):
             raise ValueError(f'{key} must be a stable alias (a-z, 0-9, underscore, hyphen)')
     if config['mode'] not in ('standard','compact'):
         raise ValueError('mode must be standard or compact')
+    if 'strategies' in config:
+        from lib.listing import STRATEGIES
+        selected = config['strategies']
+        if (not isinstance(selected, list) or not selected or
+                any(not isinstance(s, str) or s not in STRATEGIES for s in selected) or
+                len(set(selected)) != len(selected)):
+            raise ValueError('strategies must be a nonempty unique list of supported strategy IDs')
     config['symbols'] = resolve(conn, normalize(config['symbols']))
     if not config['symbols']:
         raise ValueError('symbols must not be empty; no all-market fallback')
@@ -77,7 +85,7 @@ def preview(conn, config, target):
         status='pending',strategies={},changes=[],role='stock')) for s in config['symbols']]
     doc.update(missing=sum(a['status']!='ok' for a in doc['assets']),
                strategy_missing=sum(a['role']!='benchmark' and any(a['strategies'].get(k,{}).get('status')!='ok'
-                   for k in ('stage2_us','contraction_us','bottom_fisher_us','checklist_us')) for a in doc['assets']),
+                   for k in config.get('strategies', ('stage2_us','contraction_us','bottom_fisher_us'))) for a in doc['assets']),
                url=settings().public_url+'/', config=config)
     return pub['batch_id'], notification_text(doc, config['mode']), doc
 

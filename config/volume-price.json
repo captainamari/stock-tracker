@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "baseline_sessions": 20,
+  "window_sessions": 10,
+  "high_volume": 1.2,
+  "low_volume": 0.8,
+  "flat_pct": 0.2,
+  "min_side_days": 2,
+  "min_pattern_days": 2,
+  "bull_ratio": 1.2,
+  "bear_ratio": 0.8333333333,
+  "trend_fast": 20,
+  "trend_slow": 50,
+  "slope_sessions": 5
+}

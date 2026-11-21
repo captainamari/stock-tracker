@@ -1,5 +1,13 @@
 # 部署、升级与回滚
 
+## 量价通知版本升级
+
+本次量价和通知改造无数据库 schema 迁移。沿用现有真实数据库、Docker卷、私有环境与通知渠道；先记录旧提交/镜像、备份数据库及部署配置，再构建新镜像并更新 web/worker/scheduler。不要在行情任务运行中替换镜像。独立日报 timer 使用更新后的同一 worker 镜像，保留原触发时间和防重记录。
+
+新增 `config/volume-price.json` 为镜像内参数，调整后重建部署。下一次正常行情批次产生量价字段；旧批次预览显示“旧批次未计算”，不触发 Yahoo 请求或重写历史。验证使用 `--dry-run`，不实际发送。私人配置仍兼容原五字段，可额外添加 `strategies` 选择主榜（默认前三个策略）。完整规则见 [量价分析与收盘通知](docs/VOLUME_PRICE_AND_DIGEST.md)。
+
+回滚此版本可恢复原镜像和部署配置；新增指标仅是既有JSON中的附加字段，无需为了回滚模板恢复旧数据库或删除新的投递记录。
+
 本说明对应免登录网站与独立日报版本。部署与真实通知须由所有者另行执行；本次代码改造不操作 VPS。英文用户可参考 README_EN 与下面的命令、退出码和路径。
 
 ## 进程与权限
@@ -49,7 +57,7 @@ Docker Compose 仅启动 web、worker、scheduler 三个服务。沿用真实卷
    # --scope 可为 following / held / personal；personal 是二者并集
    ```
 
-   输出目标必须不存在。检查名单、顺序、profile、渠道和 mode；可改用 `config/daily-report.example.json` 自定义。空名单必须人工填写。配置仅允许 version/profile/symbols/channel/mode，version=1，最多100个代码，去重保序；mode 为 standard/compact。未覆盖的代码明确报错，单独用 `asset-add` 加入后再安排行情更新。配置导出不会改变每个访客的收藏，不启用定时任务。
+   输出目标必须不存在。检查名单、顺序、profile、渠道和 mode；可改用 `config/daily-report.example.json` 自定义。空名单必须人工填写。配置要求 version/profile/symbols/channel/mode，可选 strategies，version=1，最多100个代码，去重保序；mode 为 standard/compact，两种模式每榜都最多10只。未覆盖的代码明确报错，单独用 `asset-add` 加入后再安排行情更新。配置导出不会改变每个访客的收藏，不启用定时任务。
 5. 在真实发送前预览（只读，无 Hub/队列/报告/行情/调度写入）：
 
    ```sh

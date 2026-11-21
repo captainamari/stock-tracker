@@ -92,7 +92,7 @@ def test_frozen_private_reports_preview_no_io_and_public_separation(client, monk
         assert original['assets'][0]['symbol']=='SECRET'
         rendered=notification_text(original)
         assert 'SECRET' in rendered and 'OTHER' not in rendered
-        assert 'MA50' in rendered and '▓' in rendered and '/reports/' not in rendered
+        assert 'MA50' in rendered and '量价' in rendered and 'Top 10' in rendered and '/reports/' not in rendered
     labels(['SECRET'],held=False,followed=False)
     labels(['OTHER'],held=True)
     def prohibited(*args,**kwargs):

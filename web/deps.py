@@ -40,7 +40,7 @@ def context(request):
         values={'bullish':('Bullish','偏多'),'bearish':('Bearish','偏空'),'neutral':('Neutral','中性'),'caution':('Caution','谨慎'),'risk_on':('Risk on','风险偏好'),'risk_off':('Risk off','风险回避')}
         return t(*values.get(key,(key,key))) if key else t('Unavailable: required inputs missing','不可用：必要输入缺失')
     def group_label(key):
-        values={'moving_averages':('Moving averages','移动均线'),'momentum':('Momentum','动量'),'support_resistance':('Support and resistance','支撑与阻力'),'fibonacci':('Fibonacci levels','斐波那契水平')}
+        values={'moving_averages':('Moving averages','移动均线'),'momentum':('Momentum','动量'),'support_resistance':('Support and resistance','支撑与阻力'),'fibonacci':('Fibonacci levels','斐波那契水平'),'volume_price':('Price and volume','量价观察')}
         return t(*values.get(key,(key,key)))
     def local_time(value):
         return datetime.fromisoformat(value.replace('Z','+00:00')).astimezone(ZoneInfo(settings().display_timezone)).strftime('%Y-%m-%d %H:%M %Z') if value else '—'

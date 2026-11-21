@@ -5,6 +5,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from lib.listing import STRATEGIES, in_scope, score, near
 from lib.settings import settings, stamp
+from lib.volume_price import summary as volume_summary
 
 NAMES = dict(zip(STRATEGIES, ('Stage 2 趋势 / Trend', '收缩候选 / Contraction',
                             '逆势观察 / Countertrend', 'Checklist 条件清单')))
@@ -37,6 +38,9 @@ def build_document(conn, batch, target, pulse, scope, symbols=None):
             a.pop('is_followed', None)
             a.pop('is_held', None)
         a['strategies'] = saved.get(a['symbol'], {})
+        a['volume_price'] = a['strategies'].get('technical', {}).get('metrics', {}).get('volume_price')
+        if a['status'] != 'ok':
+            a['volume_price'] = {'status': 'unavailable'}
         if a['role'] == 'benchmark':
             a['strategies'] = {k:v for k,v in a['strategies'].items() if k == 'technical'}
         a['changes'] = []
@@ -102,18 +106,29 @@ def notification_text(document, mode='standard'):
         # Provider names/condition descriptions are text, never HTML or control codes.
         return ' '.join(str(value).split())
     groups = {}
-    for strategy in STRATEGIES:
+    selected = document.get('config', {}).get('strategies', list(STRATEGIES[:3]))
+    eligible = [a for a in document['assets'] if a.get('role') != 'benchmark']
+    for strategy in selected:
         matched, nearby = [], []
-        for a in document['assets']:
+        for a in eligible:
             r = a['strategies'].get(strategy, {})
+            if a.get('status') != 'ok' or r.get('status') != 'ok':
+                continue
             if r.get('is_signal'):
                 matched.append(a)
             elif r.get('near'):
                 nearby.append(a)
-        key = lambda a: (not a.get('is_held'), not bool(a['changes']), -(a['strategies'][strategy].get('score') or 0), a['symbol'])
-        groups[strategy] = dict(matched=sorted(matched, key=key), near=sorted(nearby, key=key))
+        key = lambda a: (a['strategies'][strategy].get('score') is None,
+                         -(a['strategies'][strategy].get('score') or 0),
+                         -a['strategies'][strategy].get('passed', 0), a['symbol'])
+        valid = sum(a.get('status') == 'ok' and a['strategies'].get(strategy, {}).get('status') == 'ok' for a in eligible)
+        comparisons = sum(a.get('status') == 'ok' and a['strategies'].get(strategy, {}).get('previous') is not None for a in eligible)
+        groups[strategy] = dict(matched=sorted(matched, key=key), near=nearby,
+                                valid=valid, expected=len(eligible), comparisons=comparisons)
+    overlaps = {a['symbol']: sum(a in g['matched'] for g in groups.values()) for a in eligible}
     return env.get_template('daily_notification.txt.j2').render(d=document, names=NAMES, groups=groups,
-                compact=mode == 'compact', fmt=fmt, clean=clean).strip()
+                compact=mode == 'compact', fmt=fmt, clean=clean, volume_summary=volume_summary,
+                overlaps=overlaps).strip()
 
 
 def notification_preview(conn, target, scope='personal', mode='standard'):
