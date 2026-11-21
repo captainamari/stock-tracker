@@ -310,6 +310,7 @@
             const controls = el('div', undefined, 'toolbar change-controls');
             const makeSelect = (label, choices) => {
                 const wrap = el('label', label), select = el('select');
+                select.setAttribute('aria-label', label);
                 choices.forEach(([value, text]) => { const option = el('option', text); option.value = value; select.append(option); });
                 wrap.append(select); controls.append(wrap); return select;
             };
