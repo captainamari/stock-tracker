@@ -938,6 +938,7 @@ footer {
 .distribution { font-size: 12px; margin-top: 2px; }
 .stock-table .col-volume { min-width: 310px; max-width: 350px; white-space: normal; }
 .stock-table .col-volume .volume-evidence { line-height: 1.35; }
+.stock-table .col-volume details { margin: 2px 0; }
 .stock-table .col-buy_us small { display: block; }
 .mobile-volume { display: none; }
 .confirmed-changes > details { margin: 4px 0; }
