@@ -4,6 +4,7 @@ from lib import db
 from lib.queries import dashboard_data, publication, permitted
 from lib.symbols import normalize, resolve
 from lib.listing import select, paginate, STRATEGIES, near, score
+from lib.volume_display import describe
 
 PRIVATE_FIELDS = {'is_followed','is_held','is_personal','yf_ticker','input_revision','run_id',
                   'reason','error','owner','receipt','source_type','added_at','updated_at'}
@@ -56,6 +57,10 @@ def collection(batch=None, symbols=None, report_id=None, **filters):
                 change_1d=None,role='stock',strategies={},changes=[])) for s in chosen]
     for a in rows:
         a.setdefault('changes',[])
+        vp = a['strategies'].get('technical', {}).get('metrics', {}).get('volume_price')
+        a['volume_view'] = describe(vp if a['status']=='ok' else {'status':'unavailable'})
+        if a['symbol'] in ('VIX','^VIX'):
+            a['volume_view'] = dict(summary=[('Volume analysis not applicable to VIX','VIX 不适用成交量分析')],details=[])
         if a.get('role')=='benchmark':
             a['strategies'] = {k:v for k,v in a['strategies'].items() if k=='technical'}
             a['changes'] = []
@@ -85,6 +90,8 @@ def collection(batch=None, symbols=None, report_id=None, **filters):
             a['price_basis'] = price['basis'] if price else None
     return public_value(dict(**result,batch_id=data['batch_id'],latest_date=data['latest_date'],pulse=data['pulse'],
         counts={k:len(v) for k,v in candidates.items()},candidates={k:v[:5] for k,v in candidates.items()},changes=changes,
+        evaluated_counts={k:sum(k in a['strategies'] for a in rows if a.get('role')!='benchmark') for k in STRATEGIES},
+        stock_count=sum(a.get('role')!='benchmark' for a in rows),
         comparison_count=sum(r.get('previous') is not None for r in comparisons),
         comparison_missing=sum(r.get('previous') is None for r in comparisons),
         selected_count=len(rows),missing_count=sum(a['status']!='ok' for a in rows)))

@@ -4,5 +4,5 @@
   "symbols": ["NVDA", "MSFT", "GOOG", "INTC"],
   "channel": "trading",
   "mode": "compact",
-  "strategies": ["stage2_us", "contraction_us", "bottom_fisher_us"]
+  "strategies": ["stage2_us", "contraction_us", "bottom_fisher_us", "buy_us"]
 }

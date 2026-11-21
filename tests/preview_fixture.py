@@ -13,10 +13,13 @@ if __name__=='__main__':
     from tests.fixtures import bars,seed_watchlist,update
     migrate()
     from lib.symbols import DEFAULT_WATCHLIST
-    seed_watchlist(tuple(DEFAULT_WATCHLIST['symbols'])+('SYNOK','SHORT','MISSING','STALE','PRIVATE'))
+    seed_watchlist(tuple(DEFAULT_WATCHLIST['symbols'])+('SYNOK','SYNBUY','SHORT','MISSING','STALE','PRIVATE'))
     with db.get_db() as conn:
         conn.execute("UPDATE watchlist SET is_public=0 WHERE symbol='PRIVATE'")
     def source(symbol,start,target):
+        if symbol=='SYNBUY':
+            from tests.test_buy import bars as buy_bars
+            return buy_bars(target)
         if symbol=='MISSING':
             raise RuntimeError('Isolated browser fault injection')
         result=bars(symbol,start,target,short=symbol=='SHORT')

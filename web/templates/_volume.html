@@ -1,0 +1,7 @@
+{% macro volume_block(value, t, volume_view) %}
+{% set view=volume_view(value) %}<div class="volume-evidence">
+{% for line in view.summary %}<div>{{t(line[0],line[1])}}</div>{% endfor %}
+{% if view.details %}<details><summary>{{t('Price/volume evidence','量价依据')}}</summary>
+{% for line in view.details %}<p>{{t(line[0],line[1])}}</p>{% endfor %}
+</details>{% endif %}</div>
+{% endmacro %}

@@ -929,6 +929,32 @@ footer {
     color: var(--blue);
     margin: 8px 0;
 }
+.index-grid > .index-item { display: block; min-width: 0; }
+.index-quote { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.index-item > small { display: block; margin: 6px 0; }
+.volume-evidence { font-size: 12px; white-space: normal; line-height: 1.5; }
+.volume-evidence details { margin: 4px 0; }
+.volume-evidence p { margin: 5px 0; }
+.distribution { font-size: 12px; margin-top: 6px; }
+.stock-table .col-volume { min-width: 210px; max-width: 260px; white-space: normal; }
+.stock-table .col-buy_us small { display: block; }
+.mobile-volume { display: none; }
+.confirmed-changes > details { margin: 4px 0; }
+.confirmed-changes summary { line-height: 1.6; }
+.change-controls { margin: 10px 0; }
+.changes-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.changes-table th, .changes-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+.confirmed-changes .pagination { justify-content: flex-start; }
+@media (max-width: 700px) {
+    .index-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+    .stock-table .col-volume { display: none; }
+    .mobile-volume { display: block; margin-top: 6px; }
+    .stock-table .col-identity { min-width: 165px; max-width: 185px; }
+    .stock-table button, .symbol-link { scroll-margin-inline: 175px 8px; }
+    .table-wrap { scroll-padding-left: 175px; }
+    .change-controls { align-items: stretch; }
+    .changes-table th, .changes-table td { padding: 7px 4px; }
+}
 .stock-table button {
     scroll-margin-inline: 190px 12px;
 }

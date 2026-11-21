@@ -4,7 +4,7 @@ from lib import db
 from lib.jobs import DEPENDENCIES
 from lib.prices import read_prices
 
-STRATEGIES = ('stage2_us','contraction_us','bottom_fisher_us','checklist_us')
+from lib.listing import STRATEGIES
 
 
 def publication(conn, batch=None):

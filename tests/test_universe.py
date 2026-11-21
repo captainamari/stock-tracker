@@ -206,7 +206,7 @@ def test_complete_union_flows_through_worker_once_per_stock(database, monkeypatc
     assert set(calls) == expected
     with db.get_db() as conn:
         assert conn.execute('SELECT status FROM update_runs WHERE run_id=?',(run,)).fetchone()[0] == 'published'
-        assert conn.execute('SELECT COUNT(*) FROM daily_results WHERE run_id=?',(run,)).fetchone()[0] == 5 * len(expected)
+        assert conn.execute('SELECT COUNT(*) FROM daily_results WHERE run_id=?',(run,)).fetchone()[0] == 6 * len(expected)
         assert conn.execute('SELECT COUNT(*) FROM price_revisions WHERE source!=?',('synthetic_test',)).fetchone()[0] == 0
         body = conn.execute('SELECT body FROM report_snapshots WHERE batch_id=?',(run,)).fetchone()[0]
         assert 'MYOWN' not in body

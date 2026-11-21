@@ -11,6 +11,7 @@ from lib.settings import settings, stamp
 from lib.symbols import normalize, resolve
 from lib.market_calendar import completed_session, is_trading_day
 from lib.daily_reports import build_document, notification_text
+from lib.listing import DEFAULT_STRATEGIES
 
 
 @contextmanager
@@ -85,7 +86,7 @@ def preview(conn, config, target):
         status='pending',strategies={},changes=[],role='stock')) for s in config['symbols']]
     doc.update(missing=sum(a['status']!='ok' for a in doc['assets']),
                strategy_missing=sum(a['role']!='benchmark' and any(a['strategies'].get(k,{}).get('status')!='ok'
-                   for k in config.get('strategies', ('stage2_us','contraction_us','bottom_fisher_us'))) for a in doc['assets']),
+                   for k in config.get('strategies', DEFAULT_STRATEGIES)) for a in doc['assets']),
                url=settings().public_url+'/', config=config)
     return pub['batch_id'], notification_text(doc, config['mode']), doc
 

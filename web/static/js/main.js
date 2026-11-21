@@ -147,7 +147,9 @@ document.addEventListener('DOMContentLoaded', () => {
             el('strong', all() ? t('All stocks', '全部股票') : t('My watchlist', '我的关注')),
         );
         for (const [key, name] of Object.entries(names)) {
-            const b = el('button', `${name} ${data.counts[key]}`);
+            const unknown = data.stock_count > 0 && data.evaluated_counts?.[key] === 0;
+            const b = el('button', `${name}[${unknown ? '—' : data.counts[key] ?? '…'}]`);
+            if (unknown) b.title = t('Not calculated in this batch', '该批次未计算此策略');
             b.type = 'button';
             b.dataset.countStrategy = key;
             b.setAttribute(
@@ -156,31 +158,7 @@ document.addEventListener('DOMContentLoaded', () => {
             );
             summary.append(b);
         }
-        const changes = document.querySelector('#confirmed-changes');
-        changes.replaceChildren();
-        const text = data.changes.length
-            ? data.changes
-                  .map(
-                      (c) =>
-                          c.symbol +
-                          ' ' +
-                          names[c.strategy] +
-                          ' ' +
-                          (c.change === 'entry' ? t('Entered', '新增') : t('Exited', '退出')),
-                  )
-                  .join(' · ')
-            : t('No confirmed entries or exits.', '无已确认新增或退出。');
-        changes.append(el('strong', t('Confirmed changes · ', '已确认变化 · ')), el('span', text));
-        if (data.comparison_missing)
-            changes.append(
-                el(
-                    'small',
-                    t(
-                        ` Cannot confirm ${data.comparison_missing} stock/strategy comparisons: adjacent valid sessions unavailable.`,
-                        ` ${data.comparison_missing} 项股票/策略缺少前后有效交易日数据，无法确认变化。`,
-                    ),
-                ),
-            );
+        StockTable.renderChanges(document.querySelector('#confirmed-changes'), data);
     }
     function pagination(data) {
         const nav = document.querySelector('#guest-pagination');
@@ -199,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     async function load() {
         if (!guest) return;
+        form.elements.search.value = form.elements.search.value.trim();
         controlState();
         saveURL();
         controller?.abort();

@@ -3,12 +3,12 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
-from lib.listing import STRATEGIES, in_scope, score, near
+from lib.listing import STRATEGIES, DEFAULT_STRATEGIES, in_scope, score, near
 from lib.settings import settings, stamp
 from lib.volume_price import summary as volume_summary
 
 NAMES = dict(zip(STRATEGIES, ('Stage 2 趋势 / Trend', '收缩候选 / Contraction',
-                            '逆势观察 / Countertrend', 'Checklist 条件清单')))
+                            '逆势观察 / Countertrend', 'Checklist 条件清单', 'BUY')))
 SCOPES = ('following', 'held', 'personal')
 
 
@@ -106,7 +106,7 @@ def notification_text(document, mode='standard'):
         # Provider names/condition descriptions are text, never HTML or control codes.
         return ' '.join(str(value).split())
     groups = {}
-    selected = document.get('config', {}).get('strategies', list(STRATEGIES[:3]))
+    selected = document.get('config', {}).get('strategies', list(DEFAULT_STRATEGIES))
     eligible = [a for a in document['assets'] if a.get('role') != 'benchmark']
     for strategy in selected:
         matched, nearby = [], []

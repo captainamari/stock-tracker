@@ -15,7 +15,7 @@ templates.env.filters['pct'] = lambda v: '—' if v is None else f'{v:+.2f}%'
 
 
 NAMES = {'stage2_us':('Stage 2','Stage 2 趋势'), 'contraction_us':('Contraction candidates','收缩候选'),
-         'bottom_fisher_us':('Countertrend watch','逆势观察'), 'checklist_us':('Checklist','条件清单')}
+         'bottom_fisher_us':('Countertrend watch','逆势观察'), 'checklist_us':('Checklist','条件清单'), 'buy_us':('BUY','BUY')}
 STATUS = {'ok':('Available','可用'),'pending':('Pending update','待更新'),'insufficient_data':('Insufficient data','数据不足'),
           'stale':('Stale','过期'),'failed':('Failed','失败'),'queued':('Queued','排队中'),'running':('Running','运行中'),
           'published':('Published','已发布'),'sent':('Sent','已投递'),'partial':('Partially delivered','部分投递'),
@@ -23,6 +23,7 @@ STATUS = {'ok':('Available','可用'),'pending':('Pending update','待更新'),'
           'sending':('Sending','发送中'),'resolved':('Resolved without resend','已处理，未重发')}
 
 CONDITIONS = {
+ 'buy_us': [('Prior consolidation and quiet volume (saved parameters below)','此前横盘且低量（阈值见本批次参数）'),('Signal volume reaches the configured multiple of prior mean','信号日量达到此前均量的设定倍数'),('Close > open and previous close','收盘价高于开盘价且高于前日收盘价')],
  'stage2_us': [('Price > SMA150 and SMA200','价格高于 SMA150 和 SMA200'),('SMA150 > SMA200','SMA150 高于 SMA200'),('SMA200 rising over 20 sessions','SMA200 较20个交易日前上升'),('SMA50 > SMA150 and SMA200','SMA50 高于 SMA150 和 SMA200'),('Price > SMA50','价格高于 SMA50'),('Price > 52-week low × 1.25','价格高于52周低点的1.25倍'),('Price > 52-week high × 0.75','价格高于52周高点的0.75倍'),('126-session return > SPY on aligned dates','同日期126交易日回报高于 SPY')],
  'contraction_us': [('52-week drawdown ≥ −25%','52周高点回撤不超过25%'),('20-session drawdown ≥ −10%','20日高点回撤不超过10%'),('Bandwidth percentile ≤ 25','布林带宽分位不超过25'),('Volume ratio < 0.75; ≥4/5 dry days','量比低于0.75，5天至少4天缩量'),('SMA50 rising over 20 sessions','SMA50 较20个交易日前上升'),('Within 3% of SMA10','距 SMA10 不超过3%')],
  'bottom_fisher_us': [('Within −15% / +10% of SMA200','距 SMA200 在−15%至+10%'),('Trend quality or prior Stage2 entry','趋势质地或历史 Stage2 记录'),('52-week drawdown ≤ −15%','52周回撤至少15%'),('20-session drawdown ≤ −8%','20日回撤至少8%'),('Within 3% of support','距支撑不超过3%'),('RSI oversold or bullish divergence','RSI 超卖或底背离'),('Volume ratio < 0.6','量比低于0.6'),('MACD bullish divergence','MACD 底背离')],
@@ -37,7 +38,7 @@ def context(request):
     def label(key):
         return t(*STATUS.get(key,(key or '—',key or '—')))
     def regime_label(key):
-        values={'bullish':('Bullish','偏多'),'bearish':('Bearish','偏空'),'neutral':('Neutral','中性'),'caution':('Caution','谨慎'),'risk_on':('Risk on','风险偏好'),'risk_off':('Risk off','风险回避')}
+        values={'bullish':('Bullish','偏多'),'bearish':('Bearish','偏空'),'neutral':('Neutral','中性'),'caution':('Caution','谨慎'),'cautious':('Caution','谨慎'),'risk_on':('Risk on','风险偏好'),'risk_off':('Risk off','风险回避')}
         return t(*values.get(key,(key,key))) if key else t('Unavailable: required inputs missing','不可用：必要输入缺失')
     def group_label(key):
         values={'moving_averages':('Moving averages','移动均线'),'momentum':('Momentum','动量'),'support_resistance':('Support and resistance','支撑与阻力'),'fibonacci':('Fibonacci levels','斐波那契水平'),'volume_price':('Price and volume','量价观察')}
@@ -47,7 +48,8 @@ def context(request):
     from web.formatting import METRICS, metric_label as format_metric
     metric_label = lambda key: format_metric(key, t)
     from lib.symbols import DEFAULT_WATCHLIST
-    return dict(default_watchlist=DEFAULT_WATCHLIST,lang=lang,t=t,status_label=label,near=near,strategy_score=score,names={s:t(*v) for s,v in NAMES.items()},
+    from lib.volume_display import describe
+    return dict(volume_view=describe,default_watchlist=DEFAULT_WATCHLIST,lang=lang,t=t,status_label=label,near=near,strategy_score=score,names={s:t(*v) for s,v in NAMES.items()},
                 condition_names={s:[t(*v) for v in names] for s,names in CONDITIONS.items()},
                 local_time=local_time,expected_date=completed_session(),regime_label=regime_label,group_label=group_label,
                 display_timezone=settings().display_timezone,metric_label=metric_label,metric_labels={key:t(*value) for key,value in METRICS.items()})

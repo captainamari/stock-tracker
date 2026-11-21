@@ -51,7 +51,7 @@ Stage 2 {{ b.stage2_count }}/{{ b.analyzed }}｜有效/应统计 {{ b.analyzed }
 退出条件不等于卖出；新增符合不等于新进Top 10。
 
 {% for strategy,g in groups.items() %}
-{{ {'stage2_us':'📈','contraction_us':'🔎','bottom_fisher_us':'🔄','checklist_us':'📋'}[strategy] }} {{ names[strategy].split(' / ')[0] }}｜Top 10
+{{ {'stage2_us':'📈','contraction_us':'🔎','bottom_fisher_us':'🔄','checklist_us':'📋','buy_us':'🟢'}[strategy] }} {{ names[strategy].split(' / ')[0] }}｜Top 10
 有效 {{ g.valid }}/{{ g.expected }}｜符合 {{ g.matched|length }}只｜展示 {{ [g.matched|length,10]|min }}只{% if g.matched|length>10 %}｜省略 {{ g.matched|length-10 }}只{% endif %}
 
 {% if not g.matched %}{{ '有效数据中无符合项，另有数据缺失' if g.valid<g.expected else '今日没有符合条件的个股' }}。
@@ -70,6 +70,8 @@ Stage 2 {{ b.stage2_count }}/{{ b.analyzed }}｜有效/应统计 {{ b.analyzed }
 {% elif strategy=='contraction_us' %}带宽分位 {{ fmt(nested.get('bbw_percentile')) }}%｜10/50日均量比 {{ fmt(nested.get('vol_ratio')) }}x
 {% elif strategy=='bottom_fisher_us' %}RSI {{ fmt(nested.get('rsi')) }}｜10/50日均量比 {{ fmt(nested.get('vol_ratio')) }}x{% if nested.get('rsi_divergence') %}｜RSI底背离{% endif %}{% if nested.get('macd_divergence') %}｜MACD底背离{% endif %}
 
+{% elif strategy=='buy_us' %}横盘{{ m.parameters.sideways_sessions }}日振幅 {{ fmt(m.range_pct) }}%｜低量比 {{ fmt(m.quiet_volume_ratio) }}x｜放量 {{ fmt(m.buy_volume_multiple) }}x
+开盘 ${{ fmt(m.signal_open) }} → 收盘 ${{ fmt(m.signal_close) }}｜BUY参考价 ${{ fmt(m.reference_price) }}
 {% else %}周线 {{ clean(m.get('weekly_impulse','—')) }}｜{{ r.passed }}/{{ r.total }}条件（含本周暂态）
 {% endif %}
 {% if not compact %}{{ volume_details(a.get('volume_price')) }}

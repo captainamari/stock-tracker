@@ -17,10 +17,11 @@ from scripts.buying_checklist import analyze_buying_checklist
 from scripts import market_pulse
 from lib.technical_analysis import compute_technical_indicators
 from lib.volume_price import analyze as analyze_volume_price, load_parameters
+from lib.buy import analyze as analyze_buy, load_parameters as load_buy_parameters
+from lib.listing import STRATEGIES
 
-STRATEGIES = ('stage2_us','contraction_us','bottom_fisher_us','checklist_us')
 RULE_VERSION = 'v1'
-TOTALS = dict(zip(STRATEGIES, (8,6,8,11)))
+TOTALS = dict(zip(STRATEGIES, (8,6,8,11,3)))
 
 
 def clean(value):
@@ -50,7 +51,7 @@ def outcome(strategy, status, reason=None, raw=None, signal=False):
                 metrics=value, weekly_mode='provisional' if strategy=='checklist_us' else None)
 
 
-def evaluate_asset(asset, frame, spy, prior, target, volume_parameters=None):
+def evaluate_asset(asset, frame, spy, prior, target, volume_parameters=None, buy_parameters=None):
     values = {}
     source_status = asset['status']
     if source_status != 'ok':
@@ -100,6 +101,12 @@ def evaluate_asset(asset, frame, spy, prior, target, volume_parameters=None):
         values['technical'] = outcome('technical','ok',raw=compute_technical_indicators(frame)) if frame is not None and len(frame)>=50 else outcome('technical','insufficient_data','history_below_50_sessions')
     except Exception as exc:
         values['technical'] = outcome('technical','failed',f'calculation:{type(exc).__name__}')
+    # BUY has its own shorter history requirement, independent of Stage 2.
+    try:
+        raw = analyze_buy(frame, target, buy_parameters)
+        values['buy_us'] = outcome('buy_us', raw['status'], raw.get('reason'), raw, raw['is_buy'])
+    except Exception as exc:
+        values['buy_us'] = outcome('buy_us', 'failed', f'calculation:{type(exc).__name__}')
     if asset['symbol'] not in ('VIX', '^VIX'):
         values['technical']['metrics']['volume_price'] = analyze_volume_price(frame, target, volume_parameters)
     return values
@@ -107,6 +114,7 @@ def evaluate_asset(asset, frame, spy, prior, target, volume_parameters=None):
 
 def calculate_run(job):
     volume_parameters = load_parameters()
+    buy_parameters = load_buy_parameters()
     with db.get_db() as conn:
         assets = [dict(r) for r in conn.execute('SELECT * FROM run_assets WHERE run_id=? ORDER BY symbol',(job['run_id'],))]
         prior = {(r['symbol'],r['strategy_id']):dict(r) for r in conn.execute('SELECT * FROM candidate_states')}
@@ -116,7 +124,14 @@ def calculate_run(job):
         with db.get_db() as conn:
             rows = read_prices(conn, asset['symbol'], job['target_date'], asset['input_revision'] or 0)
         frame = dataframe(rows)
-        results = evaluate_asset(asset, frame, spy, prior, job['target_date'], volume_parameters)
+        results = evaluate_asset(asset, frame, spy, prior, job['target_date'], volume_parameters, buy_parameters)
+        # Reject provider-quality failures even when their numeric values exist.
+        if any(r['quality'] != 'valid' for r in rows):
+            safe = dataframe([dict(r, **{k: None for k in ('open','high','low','close','volume')})
+                              if r['quality'] != 'valid' else r for r in rows])
+            if asset['status'] == 'ok':
+                raw = analyze_buy(safe, job['target_date'], buy_parameters)
+                results['buy_us'] = outcome('buy_us', raw['status'], raw.get('reason'), raw, raw['is_buy'])
         with db.get_db() as conn:
             conn.execute('BEGIN IMMEDIATE')
             jobs.fence(conn,job)
@@ -126,7 +141,7 @@ def calculate_run(job):
             conn.execute('UPDATE run_assets SET price=?,change_1d=? WHERE run_id=? AND symbol=?',(price,change,job['run_id'],asset['symbol']))
             for strategy, result in results.items():
                 conn.execute('''INSERT OR REPLACE INTO daily_results VALUES (?,?,?,?,?,?,?,?,?,?)''',
-                    (job['run_id'],asset['symbol'],strategy,RULE_VERSION,asset['actual_date'],asset['input_revision'],result['status'],result['is_signal'],dumps(result),stamp()))
+                    (job['run_id'],asset['symbol'],strategy,'buy-v1' if strategy=='buy_us' else RULE_VERSION,asset['actual_date'],asset['input_revision'],result['status'],result['is_signal'],dumps(result),stamp()))
         jobs.progress(job,'calculate',i+1)
 
 

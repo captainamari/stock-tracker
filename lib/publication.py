@@ -33,7 +33,7 @@ def report_body(conn, batch, target, pulse):
              f'行情缺失/失败 Missing/failed: {missing}/{len(assets)}; 策略不可计算 unavailable: {strategy_missing}',
              f'市场背景 Market context: {pulse["regime"] or "数据不足 / insufficient data"}',
              f'指数并集宽度 Index union breadth: {pulse["breadth"].get("stage2_count",0)}/{pulse["breadth"].get("analyzed",0)} assessed; expected {pulse["breadth"].get("total",0)}; missing {pulse["breadth"].get("missing",0)}']
-    names = dict(zip(STRATEGIES, ('Stage2','收缩候选 / Contraction candidates','逆势观察 / Bottom Fisher','Checklist (score ≠ win probability)')))
+    names = dict(zip(STRATEGIES, ('Stage2','收缩候选 / Contraction candidates','逆势观察 / Bottom Fisher','Checklist (score ≠ win probability)','BUY')))
     for strategy in STRATEGIES:
         matches = [r['symbol'] for r in rows if r['strategy_id']==strategy and r['status']=='ok' and r['is_signal']]
         lines.append(f'{names[strategy]} ({len(matches)}): '+(', '.join(matches) if matches else '本日无候选 / No candidates'))
@@ -58,7 +58,7 @@ def publish(job):
         if latest and job['target_date'] < latest[0]:
             raise ValueError('An older market date cannot replace the current publication')
         count = conn.execute('SELECT COUNT(*) FROM daily_results WHERE run_id=?',(job['run_id'],)).fetchone()[0]
-        expected = conn.execute('SELECT COUNT(*) FROM run_assets WHERE run_id=?',(job['run_id'],)).fetchone()[0]*5
+        expected = conn.execute('SELECT COUNT(*) FROM run_assets WHERE run_id=?',(job['run_id'],)).fetchone()[0]*(len(STRATEGIES)+1)
         if count != expected:
             raise ValueError('Incomplete result set cannot publish')
         now = stamp()

@@ -3,8 +3,9 @@ from math import ceil
 from urllib.parse import urlencode
 
 SCOPES = ('all', 'following', 'held', 'personal')
-STRATEGIES = ('stage2_us', 'contraction_us', 'bottom_fisher_us', 'checklist_us')
-SCORES = dict(zip(STRATEGIES, ('trend_power', 'vcp_score', 'bf_score', 'bc_score')))
+STRATEGIES = ('stage2_us', 'contraction_us', 'bottom_fisher_us', 'checklist_us', 'buy_us')
+DEFAULT_STRATEGIES = ('stage2_us', 'contraction_us', 'bottom_fisher_us', 'buy_us')
+SCORES = dict(zip(STRATEGIES, ('trend_power', 'vcp_score', 'bf_score', 'bc_score', 'buy_score')))
 
 
 def score(result, strategy):
@@ -32,7 +33,7 @@ def select(rows, *, scope='all', search='', strategy='', match='all', sort='symb
     # Never allow public callers to infer personal memberships through filtering.
     scope = scope if private and scope in SCOPES else 'all'
     result = [a for a in rows if in_scope(a, scope)
-              and search.casefold() in (a['symbol']+' '+a.get('name', '')).casefold()]
+              and search.strip().casefold() in (a['symbol']+' '+a.get('name', '')).casefold()]
     if match == 'changed':
         result = [a for a in result if any(strategy not in STRATEGIES or c['strategy']==strategy for c in a.get('changes',[]))]
     if strategy in STRATEGIES:

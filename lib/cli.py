@@ -26,6 +26,7 @@ def main(argv=None):
     for action in ('asset-public','asset-private','asset-disable','asset-enable'):
         sub.add_parser(action).add_argument('symbol')
     sub.add_parser('update',help='Queue a market update, without notifications')
+    sub.add_parser('recalculate',help='Publish current rules using latest frozen inputs; no downloads or sends')
     run=sub.add_parser('runs',help='Inspect durable market tasks');run.add_argument('--id')
     schedule=sub.add_parser('update-schedule',help='Inspect/set market update time in America/New_York')
     schedule.add_argument('--time')
@@ -87,6 +88,9 @@ def main(argv=None):
                 field,value={'asset-public':('is_public',1),'asset-private':('is_public',0),'asset-enable':('enabled',1),'asset-disable':('enabled',0)}[args.command]
                 changed=conn.execute(f'UPDATE watchlist SET {field}=?,updated_at=? WHERE symbol=?',(value,stamp(),symbol)).rowcount
                 if not changed:raise ValueError('Unknown configured asset; add it first')
+    elif args.command=='recalculate':
+        from lib.recalculate import latest
+        output(latest())
     elif args.command=='update':
         from lib.pipeline import request_update
         print(request_update('manual'))

@@ -163,3 +163,7 @@ python -m scripts.verify_hub_contract --checkout ../notification-hub
 ```
 
 本机为 Windows，没有 systemd/WSL，不能在本机声称 unit 原生执行通过。CI 增加 Linux systemd-analyze 校验与真实 Chromium 场景；实际运行结果见验收记录。未执行 VPS 部署、生产数据库迁移、真实通知或用户验收。旧 docs/progress 与 DEPLOY_QA 是历史证据，不作为本版本启动指南。
+
+## BUY / 网页量价升级
+
+新增 `config/buy.json`，无需数据库结构迁移。先备份并暂停调度，确认没有 queued/running 任务，部署同一版本 web/worker/scheduler。私人通知显式 `strategies` 列表追加 `buy_us`。运行 `python -m lib.cli recalculate` 可用当前保存行情发布新规则批次，不联网、不发送通知、不更改原批次。核对行情日期（重算不会让行情变新）、BUY 状态、量价、搜索和变化明细后恢复调度。保留旧镜像/配置及升级前数据库备份；仅代码回滚不会撤销新发布批次，需要精确数据回滚时在停止所有写进程后从备份恢复。规则详见 [BUY_AND_WEB_SIGNALS.md](docs/BUY_AND_WEB_SIGNALS.md)。

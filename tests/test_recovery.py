@@ -45,7 +45,7 @@ run_once(source)
         assert jobs.get_run(identifier)['attempt']==2
         with db.get_db() as conn:
             assert conn.execute('SELECT COUNT(*) FROM publications').fetchone()[0]==1
-            assert conn.execute('SELECT COUNT(*) FROM daily_results').fetchone()[0]==25
+            assert conn.execute('SELECT COUNT(*) FROM daily_results').fetchone()[0]==30
     finally:
         if child.poll() is None:
             child.kill()

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "sideways_sessions": 30,
+  "max_range_pct": 10.0,
+  "quiet_sessions": 20,
+  "quiet_reference_sessions": 20,
+  "max_quiet_ratio": 0.8,
+  "volume_sessions": 20,
+  "min_volume_multiple": 3.0
+}

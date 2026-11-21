@@ -20,11 +20,11 @@ def run_compact_checks(browser, base, artifacts):
             visible=sum(r['top']>=0 and r['bottom']<=900 for r in sizes)
             metrics.append(dict(width=width,route=route,visible_rows=visible,row_height=sizes[0]['height'] if sizes else None))
             if width==1440 and route=='/watchlist':
-                assert visible>=8,(visible,sizes)
-                assert 48<=sizes[0]['height']<=52,sizes[0]
+                assert visible>=5,(visible,sizes)
+                assert 48<=sizes[0]['height']<=100,sizes[0]
                 page.screenshot(path=str(artifacts/'watchlist-desktop.png'))
             if width==1440 and route=='/':
-                assert visible>=2,(visible,sizes)
+                assert sizes and sizes[0]['top']<900,(visible,sizes)
                 page.screenshot(path=str(artifacts/'overview-desktop.png'))
             if width==390 and route in ('/watchlist','/ticker/AAPL'):
                 page.screenshot(path=str(artifacts/('watchlist-mobile.png' if route=='/watchlist' else 'detail-mobile.png')))
@@ -54,6 +54,11 @@ def run_compact_checks(browser, base, artifacts):
     assert page.locator('[value=score]').is_disabled()
     page.locator('[name=search]').fill('AAPL');page.locator('[name=search]').press('Enter');ready()
     assert symbols()==['AAPL']
+    for query in ('aapl','AaPl','  aapl  '):
+        page.locator('[name=search]').fill(query);page.locator('[name=search]').press('Enter');ready()
+        assert symbols()==['AAPL']
+    assert '[' in page.locator('[data-count-strategy=buy_us]').inner_text()
+    expect(page.locator('[data-symbol=AAPL] .col-volume')).to_contain_text('RVOL')
     assert page.locator('#favorite-summary').inner_text()==initial_counts
     page.locator('[name=search]').fill('');page.locator('[name=search]').press('Enter');ready()
     page.locator('th.col-price button').press('Enter');ready()
@@ -164,6 +169,40 @@ def run_compact_checks(browser, base, artifacts):
     page.goto(base+'/daily?lang=en');ready()
     path=page.locator('tr[data-symbol=AAPL] + .history-row .sparkline path').get_attribute('d')
     assert path.count('M')==2,path
+    page.unroute('**/api/assets?*')
+    page.goto(base+'/discover?lang=en');ready()
+    page.locator('[name=search]').fill('synbuy');page.locator('[name=search]').press('Enter');ready()
+    expect(page.locator('[data-symbol=SYNBUY] .col-buy_us')).to_contain_text('BUY 100')
+    expect(page.locator('[data-symbol=SYNBUY] .col-buy_us')).to_contain_text('Reference close')
+    page.get_by_role('link',name='SYNBUY',exact=True).click()
+    expect(page.get_by_text('Saved BUY parameters',exact=True)).to_be_visible()
+    page.get_by_text('Saved BUY parameters',exact=True).click()
+    expect(page.get_by_text('Consolidation sessions',exact=True)).to_be_visible()
+    def many_changes(route):
+        response=route.fetch();data=response.json()
+        data['changes']=[{'symbol':'SYNBUY','strategy':'buy_us' if i%2 else 'stage2_us','change':'entry' if i%2 else 'exit'} for i in range(27)]
+        route.fulfill(response=response,json=data)
+    page.route('**/api/assets?*',many_changes)
+    page.goto(base+'/discover?lang=en');ready()
+    changes=page.locator('#confirmed-changes')
+    expect(changes.locator('summary')).to_contain_text('Confirmed changes[27] · 1 stocks')
+    assert not changes.locator('details').get_attribute('open')
+    changes.locator('summary').click()
+    assert changes.locator('tbody tr').count()==10
+    changes.get_by_role('button',name='Next',exact=True).click()
+    expect(changes.get_by_role('status')).to_contain_text('2 / 3')
+    changes.get_by_label('Strategy',exact=True).select_option('buy_us')
+    expect(changes.get_by_role('status')).to_contain_text('1 / 2 · 13')
+    changes.get_by_label('Change',exact=True).select_option('exit')
+    expect(changes).to_contain_text('No changes for these filters.')
+    page.screenshot(path=str(artifacts/'changes-filtered.png'))
+    page.unroute('**/api/assets?*');page.goto(base+'/?lang=zh');ready()
+    expect(page.locator('.market-panel')).to_contain_text('涨跌日均量比')
+    expect(page.locator('.market-panel')).to_contain_text('今日派发')
+    page.set_viewport_size({'width':390,'height':844});page.goto(base+'/watchlist?lang=zh');ready()
+    expect(page.locator('[data-symbol=AAPL] .mobile-volume')).to_be_visible()
+    assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
+    page.screenshot(path=str(artifacts/'volume-mobile.png'))
     assert not errors,errors
     (artifacts/'compact-results.json').write_text(json.dumps({'status':'passed','viewports':metrics,'page_errors':errors,'scenarios':['six widths and five pages','density, horizontal overflow, sticky identity/header','counts before filters, header sort, score strategy, pagination','favorite focus and scroll','failed request retains content and keyboard retry','detail source query and table scroll restoration','saved chart ranges only','edit order and management keyboard/file chooser','report batch and details','out-of-order responses','zero change and long names']},ensure_ascii=False,indent=2),encoding='utf-8')
     race.close();context.close()

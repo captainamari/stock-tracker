@@ -64,7 +64,7 @@ def test_real_call_chain_and_frozen_revisions(database):
     assert report_data(first)['body']==before
     assert 'Market date 2026-10-20' in before
     with db.get_db() as conn:
-        assert conn.execute('SELECT COUNT(*) FROM daily_results WHERE run_id=?',(second,)).fetchone()[0]==25
+        assert conn.execute('SELECT COUNT(*) FROM daily_results WHERE run_id=?',(second,)).fetchone()[0]==30
         assert conn.execute('SELECT COUNT(DISTINCT basis) FROM price_revisions').fetchone()[0]==1
 
 
@@ -201,4 +201,4 @@ def test_full_csv_and_backup_preserve_published_inputs(client,tmp_path):
     with sqlite3.connect(restored) as conn:
         assert conn.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
         assert conn.execute('SELECT batch_id FROM current_publication').fetchone()[0]==run
-        assert conn.execute('SELECT COUNT(*) FROM daily_results').fetchone()[0]==25
+        assert conn.execute('SELECT COUNT(*) FROM daily_results').fetchone()[0]==30
