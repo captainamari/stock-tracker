@@ -19,13 +19,18 @@ if __name__=='__main__':
     def source(symbol,start,target):
         if symbol=='SYNBUY':
             from tests.test_buy import bars as buy_bars
-            return buy_bars(target)
+            # One fixed history across both publications: shifting a synthetic
+            # window would omit its oldest bar during a revision backfill.
+            return buy_bars('2026-10-20').loc[:target]
         if symbol=='MISSING':
             raise RuntimeError('Isolated browser fault injection')
         result=bars(symbol,start,target,short=symbol=='SHORT')
         return result.iloc[:-1] if symbol=='STALE' else result
     run=update(source,now=datetime(2026,10,20,8,tzinfo=timezone.utc))
     run=update(source,now=datetime(2026,10,21,8,tzinfo=timezone.utc))
+    with db.get_db() as conn:
+        signal=conn.execute("SELECT status,is_signal FROM daily_results WHERE run_id=? AND symbol='SYNBUY' AND strategy_id='buy_us'",(run,)).fetchone()
+        assert signal['status']=='ok' and signal['is_signal']==1, 'BUY browser fixture must have a verified signal'
     db.upsert_watchlist([{'symbol':'PENDING','name':'SYNTHETIC pending'}])
     with db.get_db() as conn:
         conn.execute("UPDATE watchlist SET is_public=1 WHERE symbol='PENDING'")
