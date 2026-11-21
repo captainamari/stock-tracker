@@ -931,12 +931,13 @@ footer {
 }
 .index-grid > .index-item { display: block; min-width: 0; }
 .index-quote { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
-.index-item > small { display: block; margin: 6px 0; }
+.index-item > small { display: block; margin: 2px 0; }
 .volume-evidence { font-size: 12px; white-space: normal; line-height: 1.5; }
 .volume-evidence details { margin: 4px 0; }
 .volume-evidence p { margin: 5px 0; }
-.distribution { font-size: 12px; margin-top: 6px; }
-.stock-table .col-volume { min-width: 210px; max-width: 260px; white-space: normal; }
+.distribution { font-size: 12px; margin-top: 2px; }
+.stock-table .col-volume { min-width: 310px; max-width: 350px; white-space: normal; }
+.stock-table .col-volume .volume-evidence { line-height: 1.35; }
 .stock-table .col-buy_us small { display: block; }
 .mobile-volume { display: none; }
 .confirmed-changes > details { margin: 4px 0; }
